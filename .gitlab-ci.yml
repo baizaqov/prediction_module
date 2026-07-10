@@ -6,6 +6,7 @@ stages:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  BUILD_VERSION: $CI_COMMIT_REF_NAME-$CI_PIPELINE_ID
 
 cache:
   paths:
