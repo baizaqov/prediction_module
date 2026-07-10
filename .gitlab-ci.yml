@@ -43,3 +43,19 @@ dockerize_project:
     - "docker build -t $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):$BUILD_VERSION ."
     - "docker push $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):$BUILD_VERSION"
   tags: [shell-test]
+
+deploy-test:
+  stage: deploy
+  only:
+    refs: 
+      - test
+  except:
+    - tags
+  environment:
+    name: test
+    url: http://${CI_ENVIRONMENT_SLUG}.ehealth.kz
+  script:
+    - git clone https://gitlab-ci-token:$CI_JOB_TOKEN@$GITLAB_ADDR/${CI_PROJECT_NAMESPACE}/deploy.git
+    - sh deploy/deploy.sh
+  tags: [test]
+
