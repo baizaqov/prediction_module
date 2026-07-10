@@ -35,7 +35,7 @@ deploy-test:
     name: test
     url: http://${CI_ENVIRONMENT_SLUG}.ehealth.kz
   script:
-    - git clone https://gitlab-ci-token:$CI_JOB_TOKEN@$GITLAB_ADDR/${CI_PROJECT_NAMESPACE}/deploy.git
+    - git clone https://gitlab-ci-token:$CI_JOB_TOKEN@$GITLAB_ADDR/eh/deploy.git
     - sh deploy/deploy.sh
   tags: [test]
 
