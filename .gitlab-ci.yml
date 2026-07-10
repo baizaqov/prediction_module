@@ -14,7 +14,8 @@ variables:
   ARTIFACT_PATH_COMMON: ''
   FF_USE_FASTZIP: "true"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  APP_VERSION_SCRIPT: '${CI_JOB_ID}'
+  APP_VERSION_SCRIPT: '${CI_PIPELINE_ID}'
+  APP_VERSION: '${CI_PIPELINE_ID}'
 
 containerize-test:
   stage: containerize-test
