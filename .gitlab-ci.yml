@@ -13,15 +13,12 @@ cache:
 
 build_project:
   stage: build
-  image: docker:24-cli
-  services:
-    - docker:24-dind
   only:
     - demo
     - test
   script:
     - python -V
-    - pip install -r requirements.txt
+    - pip install --trusted-host pypi.org -r requirements.txt
     - rm -rf dist
     - mkdir -p dist
     - sh -c 'for f in *; do [ "$f" != "dist" ] && cp -r "$f" dist/; done'
