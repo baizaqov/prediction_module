@@ -1,0 +1,24 @@
+# Веб-слой
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-jose[cryptography]==3.3.0
+
+# Хранение
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+alembic==1.14.0
+
+# ML / данные
+scikit-learn==1.6.0
+pandas==2.2.3
+numpy==2.2.1
+joblib==1.4.2
+
+# Интеграция с платформой
+py-eureka-client==0.11.13
+httpx==0.28.1
+
+# Тесты
+pytest==8.3.4
