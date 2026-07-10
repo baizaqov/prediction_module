@@ -1,0 +1,35 @@
+Deployment:
+  resources:
+    limits:
+      cpu: 4
+      memory: 4Gi
+    requests:
+      cpu: "200m"
+      memory: 200Mi
+  livereadProbeType:
+    httpGet:
+      enabled: false
+
+
+Service:
+  type: ClusterIP
+  port: 8080
+
+ConfigMap:
+  enabled: false
+  name: gisbb-config
+
+Secret:
+  enabled: false
+  name: gisbb-secret
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
