@@ -5,30 +5,10 @@ stages:
   - deploy
 
 variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   BUILD_VERSION: $CI_COMMIT_REF_NAME-$CI_PIPELINE_ID
 
-cache:
-  paths:
-    - .cache/pip
-
-build_project:
-  stage: build
-  only:
-    - demo
-    - test
-  script:
-    - python -V
-    - pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host pypi.python.org -r requirements.txt
-    - rm -rf dist
-    - mkdir -p dist
-    - sh -c 'for f in *; do [ "$f" != "dist" ] && cp -r "$f" dist/; done'
-  artifacts:
-    paths:
-      - dist/
-
 dockerize_project:
-  stage: deploy
+  stage: build
   only:
     - demo
     - test
