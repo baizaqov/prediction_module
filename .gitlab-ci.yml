@@ -1,22 +1,44 @@
-variables:
-  BUILD_VERSION: $CI_COMMIT_REF_NAME-$CI_PIPELINE_ID
+image: python:3.12-slim
 
 stages:
-  - deploy-test
-  - release
-  - containerize-prod
-  - deploy-prod
+  - build
+  - deploy
 
-include:
-  - project: 'devops/ci-cd'
-    ref: main
-    file: 'containerize/docker-frontend.yml'
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
-  - project: 'devops/ci-cd'
-    ref: main
-    file: 'release/release.yml'
+cache:
+  paths:
+    - .cache/pip
 
-  - project: 'devops/ci-cd'
-    ref: main
-    file: 'deploy/deploy-frontend.yml'
+build_project:
+  stage: build
+  only:
+    - demo
+    - test
+  script:
+    - python -V
+    - pip install -r requirements.txt
+    - rm -rf dist
+    - mkdir -p dist
+    - sh -c 'for f in *; do [ "$f" != "dist" ] && cp -r "$f" dist/; done'
+  artifacts:
+    paths:
+      - dist/
 
+dockerize_project:
+  stage: deploy
+  only:
+    - demo
+    - test
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_IMAGE: $REGISTRY_URL_TEST/$CI_PROJECT_ROOT_NAMESPACE/$CI_PROJECT_NAME
+  script:
+    - "docker build -t $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):latest ."
+    - "docker push $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):latest"
+    - "docker build -t $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):$BUILD_VERSION ."
+    - "docker push $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):$BUILD_VERSION"
+  tags: [shell-test]
