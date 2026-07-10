@@ -13,6 +13,9 @@ cache:
 
 build_project:
   stage: build
+  image: docker:24-cli
+  services:
+    - docker:24-dind
   only:
     - demo
     - test
