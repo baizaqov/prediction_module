@@ -45,11 +45,13 @@ Swagger: локально `http://localhost:8100/docs`; через шлюз `/ap
 - **Шлюз**: маршрут `Path=/api/forecast/**` → `lb://gisbb-forecast`, `StripPrefix=2` (см. `gisbb-gateway/application-*.yaml`). FastAPI знает о префиксе через `root_path`.
 - **Аутентификация**: валидация `X-Internal-Authorization` (HS256, секрет `gisbb.internal-token.secret`), авторизация по ролям из claim `roles` (`app/security.py`, `app/roles.py`).
 - **Eureka**: регистрация через `py-eureka-client` (`EUREKA_ENABLED=true`), app-name = `gisbb-forecast`.
-- **БД**: схема `forecast` в общем `gisbb_db`. Для MVP таблицы создаёт SQLAlchemy (`create_all`); при переходе на централизованный `gisbb-db-migration` DDL нужно перенести в Liquibase.
+- **БД**: схема `forecast` в общем `gisbb_db`. Сервис владеет своей схемой сам (централизованный `gisbb-db-migration` её не ведёт): схему и таблицы создаёт SQLAlchemy `create_all` на старте, эволюцию схемы делать через Alembic (уже в зависимостях).
+- **Конфигурация**: через переменные окружения; локальный `.env` опционален и в `.gitignore`. Для test/demo/prod значения задаёт деплой (k8s ConfigMap/Secret) — отдельные `.env.*` в репозитории не заводим, `.env.example` только документирует ключи.
 
 ## Что дальше (не входит в MVP)
 
 - Боевой клиент Казгидромета через ШЭП (навык `shep-integration`).
 - Обучающая панель из реальных рядов `ooi-registry` (emergency_notifications) джойном с климатом.
 - Подбор/сравнение всех методов и сохранение лучшей модели; MLflow-версионирование.
-- Angular-модуль `module-forecast` (графики chart.js + карта Leaflet).
+- Карта распространения (Leaflet) в модуле `module-forecast` поверх готового гео-слоя риска (сейчас — график chart.js + таблица).
+- Alembic-миграции для эволюции схемы `forecast`.
