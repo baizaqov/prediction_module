@@ -3,6 +3,8 @@ image: python:3.12-slim
 stages:
   - build
   - deploy
+  - deploy-test
+  - release
 
 variables:
   BUILD_VERSION: $CI_COMMIT_REF_NAME-$CI_PIPELINE_ID
@@ -24,18 +26,113 @@ dockerize_project:
     - "docker push $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):$BUILD_VERSION"
   tags: [shell-test]
 
-deploy-test:
-  stage: deploy
+
+.base_script: &base_script
+  - git add -A
+  - git diff --quiet HEAD || git commit -m "Update $CI_PROJECT_NAME of $BUILD_VERSION"
+  - git diff --quiet origin/main..HEAD || git push origin main
+  - date
+  - sleep 5
+  - date
+  - helm repo update
+  - KUBECONFIG=~/.kube/$CONFIG_NAME helm --kube-context $CONTEXT_NAME upgrade --install  --debug  $CI_PROJECT_NAME $CI_PROJECT_ROOT_NAMESPACE/$CI_PROJECT_NAME --insecure-skip-tls-verify --version=$APP_VERSION-$BUILD_VERSION -n $NS
+  - KUBECONFIG=~/.kube/$CONFIG_NAME kubectl --context $CONTEXT_NAME rollout status deployment $CI_PROJECT_NAME -n $NS --timeout 300s
+
+
+.deploy:
+  before_script:
+    - export APP_VERSION=$($APP_VERSION_SCRIPT  | cut -d"-" -f1 | sed 's/"//g' | awk '{ gsub(/\033\[[0-9;]*m/, ""); print }')
+    - git clone https://oauth2:$DEV_GR_TOKEN@$CI_SERVER_HOST/devops/helm-project.git
+    - cp value*.yaml  helm-project/ || true
+    - cd helm-project/ && /bin/bash prepare-manifests.sh "$ENV" 
+ 
+.deploy-test:
+  extends: .deploy
+  variables:
+    ENV: TEST
   only:
-    refs: 
+    refs:
       - test
+  tags: [shell-test]
+
+.deploy-demo:
+  extends: .deploy
+  variables:
+    ENV: DEMO
+  only:
+    refs:
+      - demo
+  tags: [shell-test] 
+
+.deploy-prod:
+  extends: .deploy
+  variables:
+    ENV: PRODUCTION
+  only:
+    refs:
+      - tags
   except:
-    - tags
-  environment:
-    name: test
-    url: http://${CI_ENVIRONMENT_SLUG}.ehealth.kz
+    - test
+  tags: [shell-test]
+
+    
+deploy-test:
+  extends: .deploy-test
+  variables:
+    CONFIG_NAME: $CI_PROJECT_ROOT_NAMESPACE
+    CONTEXT_NAME: $CI_PROJECT_ROOT_NAMESPACE
+    NS: $NAMESPACE
+  stage: deploy-test
   script:
-    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_ADDR}eh/deploy.git
-    - sh deploy/deploy.sh
-  tags: [test]
+    - *base_script
+  dependencies:
+    - containerize-test-backend
+
+deploy-demo:
+  extends: .deploy-demo
+  variables:
+    CONFIG_NAME: $CI_PROJECT_ROOT_NAMESPACE
+    CONTEXT_NAME: $CI_PROJECT_ROOT_NAMESPACE
+    NS: demo
+  stage: deploy-test
+  script:
+    - *base_script
+  dependencies:
+    - containerize-test-backend
+
+deploy-prod:
+  extends: .deploy-prod
+  variables:
+    CONFIG_NAME: $CI_PROJECT_ROOT_NAMESPACE-prod
+    CONTEXT_NAME: $CI_PROJECT_ROOT_NAMESPACE-prod
+    NS: $NAMESPACE
+  stage: deploy-prod
+  script:
+    - *base_script
+  dependencies:
+    - containerize-prod-backend
+  when: manual
+
+
+release:
+  image:
+    name: $IMAGE
+    pull_policy: if-not-present
+  stage: release
+  before_script:
+    - git config user.name "Maven Release Plugin"
+    - git config user.email "maven_release_plugin@maven.com"
+    - git config http.sslVerify false
+    - git config --global credential.helper store
+    - echo "https://git:${PROJECT_GROUP_TOKEN}@gitlab.ezdrav.kz" > ~/.git-credentials
+    - cat ~/.git-credentials
+    - git checkout -B "$CI_COMMIT_REF_NAME"
+  script:
+    - mvn -Darguments=-DskipTests -DignoreSnapshots=true -B release:prepare -s $MAVEN_SETTINGS_XML -X
+  tags:
+    - docker-test
+  only:
+    - main
+  when: manual
+
 
