@@ -21,6 +21,9 @@ dockerize_project:
     - docker:dind
   variables:
     DOCKER_IMAGE: $REGISTRY_URL_TEST/$CI_PROJECT_ROOT_NAMESPACE/$CI_PROJECT_NAME
+  needs:
+    - job: pip-package
+      artifacts: true
   script:
     - "docker build -t $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):latest ."
     - "docker push $(echo $DOCKER_IMAGE | tr '[:upper:]' '[:lower:]'):latest"
