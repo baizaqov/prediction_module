@@ -5,6 +5,8 @@ stages:
   - deploy
   - deploy-test
   - release
+  - deploy-demo
+  - deploy-prod
 
 variables:
   BUILD_VERSION: $CI_COMMIT_REF_NAME-$CI_PIPELINE_ID
