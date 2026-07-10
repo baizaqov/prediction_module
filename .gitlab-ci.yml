@@ -107,8 +107,6 @@ deploy-prod:
   stage: deploy-prod
   script:
     - *base_script
-  dependencies:
-    - containerize-prod-backend
   when: manual
 
 
