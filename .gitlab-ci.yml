@@ -1,0 +1,20 @@
+stages:
+  - containerize-test
+  - deploy-test
+  - release
+  - containerize-prod
+  - deploy-prod
+
+include:
+  - project: 'devops/ci-cd'
+    ref: main
+    file: 'containerize/docker-frontend.yml'
+
+  - project: 'devops/ci-cd'
+    ref: main
+    file: 'release/release.yml'
+
+  - project: 'devops/ci-cd'
+    ref: main
+    file: 'deploy/deploy-frontend.yml'
+
