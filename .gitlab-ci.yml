@@ -48,7 +48,7 @@ containerize-test:
 
 .deploy:
   before_script:
-    - export APP_VERSION=$($APP_VERSION_SCRIPT)
+    - export APP_VERSION=111
     - git clone https://oauth2:$DEV_GR_TOKEN@$CI_SERVER_HOST/devops/helm-project.git
     - cp value*.yaml  helm-project/ || true
     - cd helm-project/ && /bin/bash prepare-manifests.sh "$ENV" 
