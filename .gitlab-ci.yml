@@ -15,7 +15,6 @@ variables:
   FF_USE_FASTZIP: "true"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   APP_VERSION_SCRIPT: '${CI_PIPELINE_ID}'
-  APP_VERSION: '${CI_PIPELINE_ID}'
 
 containerize-test:
   stage: containerize-test
@@ -49,7 +48,7 @@ containerize-test:
 
 .deploy:
   before_script:
-    - export APP_VERSION=$($APP_VERSION_SCRIPT  | cut -d"-" -f1 | sed 's/"//g' | awk '{ gsub(/\033\[[0-9;]*m/, ""); print }')
+    - export APP_VERSION=$($APP_VERSION_SCRIPT)
     - git clone https://oauth2:$DEV_GR_TOKEN@$CI_SERVER_HOST/devops/helm-project.git
     - cp value*.yaml  helm-project/ || true
     - cd helm-project/ && /bin/bash prepare-manifests.sh "$ENV" 
