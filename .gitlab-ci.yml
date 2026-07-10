@@ -85,8 +85,6 @@ deploy-test:
   stage: deploy-test
   script:
     - *base_script
-  dependencies:
-    - containerize-test-backend
 
 deploy-demo:
   extends: .deploy-demo
@@ -97,8 +95,6 @@ deploy-demo:
   stage: deploy-test
   script:
     - *base_script
-  dependencies:
-    - containerize-test-backend
 
 deploy-prod:
   extends: .deploy-prod
