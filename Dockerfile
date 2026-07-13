@@ -12,4 +12,6 @@ COPY app ./app
 
 EXPOSE 8100
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+# Порт берётся из SERVER_PORT (в кластере общий ConfigMap задаёт 8080, как у всех
+# сервисов); локально по умолчанию 8100.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${SERVER_PORT:-8100}"]

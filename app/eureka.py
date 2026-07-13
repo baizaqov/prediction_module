@@ -27,7 +27,7 @@ async def start(settings: Settings) -> None:
         # библиотека определяет автоматически; instance_id генерируется, если пуст.
         # health-эндпоинт продублирован в health.py как /actuator/health и /health.
         await eureka_client.init_async(
-            eureka_server=settings.eureka_default_zone,
+            eureka_server=settings.resolved_eureka_zone,
             app_name=settings.app_name,
             instance_port=settings.server_port,
             status_page_url="/actuator/info",
@@ -35,7 +35,7 @@ async def start(settings: Settings) -> None:
             renewal_interval_in_secs=30,
         )
         _started = True
-        log.info("Registered with Eureka at %s as %s", settings.eureka_default_zone, settings.app_name)
+        log.info("Registered with Eureka at %s as %s", settings.resolved_eureka_zone, settings.app_name)
     except Exception as exc:  # noqa: BLE001 — реестр не критичен для локального старта
         log.warning("Eureka registration skipped: %s", exc)
 

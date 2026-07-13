@@ -44,9 +44,9 @@ Swagger: локально `http://localhost:8100/docs`; через шлюз `/ap
 
 - **Шлюз**: маршрут `Path=/api/forecast/**` → `lb://gisbb-forecast`, `StripPrefix=2` (см. `gisbb-gateway/application-*.yaml`). FastAPI знает о префиксе через `root_path`.
 - **Аутентификация**: валидация `X-Internal-Authorization` (HS256, секрет `gisbb.internal-token.secret`), авторизация по ролям из claim `roles` (`app/security.py`, `app/roles.py`).
-- **Eureka**: регистрация через `py-eureka-client` (`EUREKA_ENABLED=true`), app-name = `gisbb-forecast`.
-- **БД**: схема `forecast` в общем `gisbb_db`. Сервис владеет своей схемой сам (централизованный `gisbb-db-migration` её не ведёт): схему и таблицы создаёт SQLAlchemy `create_all` на старте, эволюцию схемы делать через Alembic (уже в зависимостях).
-- **Конфигурация**: через переменные окружения; локальный `.env` опционален и в `.gitignore`. Для test/demo/prod значения задаёт деплой (k8s ConfigMap/Secret) — отдельные `.env.*` в репозитории не заводим, `.env.example` только документирует ключи.
+- **Eureka**: регистрация через `py-eureka-client`; в кластере нужно `EUREKA_ENABLED=true` (иначе маршрут шлюза `lb://gisbb-forecast` не разрешится). Зона реестра берётся из `EUREKA_DEFAULT_ZONE` или платформенного `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE`.
+- **БД**: схема `forecast` в общем `gisbb_db`. Сервис владеет своей схемой сам (SQLAlchemy `create_all` на старте с ретраями; эволюция — через Alembic). URL разрешается по приоритету: явный `DATABASE_URL` → платформенный `SPRING_DATASOURCE_URL`+креды из общего `gisbb-config`/`gisbb-secret` (JDBC автоматически конвертируется в `postgresql+psycopg://…`) → localhost.
+- **Конфигурация**: через переменные окружения; локальный `.env` опционален и в `.gitignore`. Сервис рассчитан на **тот же общий `gisbb-config`/`gisbb-secret`**, что монтируют Java-сервисы через `envFrom` — тогда БД, порт (`SERVER_PORT`) и зона Eureka настраиваются без отдельного конфига. Порт в кластере — `8080` (из `SERVER_PORT`), локально — `8100`. Отдельные `.env.*` в репозитории не заводим.
 
 ## Что дальше (не входит в MVP)
 
