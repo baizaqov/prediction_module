@@ -77,7 +77,12 @@ async def start(settings: Settings) -> None:
             instance_port=settings.server_port,
             status_page_url="/actuator/info",
             health_check_url="/actuator/health",
-            renewal_interval_in_secs=30,
+            # Короткий lease: heartbeat каждые 10 с, аренда 30 с. Если под умирает без
+            # graceful-deregistration (rolling update, SIGKILL), Eureka выселит мёртвый
+            # инстанс за ~30 с вместо дефолтных ~90 с — окно, в котором шлюз балансирует
+            # на мёртвый IP и отдаёт 500 после редеплоя, сокращается втрое.
+            renewal_interval_in_secs=10,
+            duration_in_secs=30,
         )
         # Регистрируемся по IP пода, а не по hostName (= имя пода), которое не резолвится
         # кластерным DNS. Если IP определить не удалось — оставляем поведение библиотеки.
