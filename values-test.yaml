@@ -10,6 +10,14 @@ Deployment:
     httpGet:
       enabled: false
 
+# Форкаст-специфичные переменные окружения (в дополнение к общему gisbb-config через envFrom).
+# EUREKA_ENABLED по умолчанию false; в кластере обязателен true, иначе сервис не
+# регистрируется в Eureka и шлюз на маршруте lb://gisbb-forecast отдаёт 503.
+# Зону реестра (EUREKA_CLIENT_SERVICEURL_DEFAULTZONE) и SERVER_PORT=8080 сервис берёт
+# из общего ConfigMap gisbb-config.
+environment:
+  - name: EUREKA_ENABLED
+    value: "true"
 
 Service:
   type: ClusterIP
