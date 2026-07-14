@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import math
+import zlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -96,3 +97,31 @@ def default_dataset(seed: int = 42) -> pd.DataFrame:
     return generate_dataset(
         SyntheticConfig(regions=DEFAULT_REGIONS, start_year=2019, months=72, seed=seed)
     )
+
+
+def _region_seed(region: str, seed: int) -> int:
+    """Детерминированный seed по коду региона: одинаковые данные независимо от выбора."""
+    return (seed * 1_000_003 + zlib.crc32(region.encode("utf-8"))) & 0x7FFF_FFFF
+
+
+def panel_for_regions(
+    regions: list[str], start_year: int = 2019, months: int = 72, seed: int = 42
+) -> pd.DataFrame:
+    """Панель регион×месяц для произвольного набора кодов регионов.
+
+    В отличие от ``default_dataset`` (фиксированные коды-заглушки) принимает реальные
+    идентификаторы АТЕ (dict.d_ates), приходящие из запроса фронтенда. Каждый регион
+    сидируется по своему коду, поэтому его синтетический ряд стабилен и не зависит от
+    того, какие ещё регионы выбраны в этом прогоне (важно для сравнимости прогонов).
+    """
+    frames = [
+        generate_dataset(
+            SyntheticConfig(
+                regions=[r], start_year=start_year, months=months, seed=_region_seed(r, seed)
+            )
+        )
+        for r in regions
+    ]
+    if not frames:
+        return generate_dataset(SyntheticConfig(regions=[], start_year=start_year, months=months))
+    return pd.concat(frames, ignore_index=True)

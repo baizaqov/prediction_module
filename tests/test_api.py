@@ -77,6 +77,25 @@ def test_run_forecast_and_persist():
     assert r3.json()["totalElements"] >= 1
 
 
+def test_run_forecast_accepts_arbitrary_ate_region_codes():
+    # Фронтенд шлёт реальные идентификаторы АТЕ (dict.d_ates), а не коды-заглушки KZ-*.
+    # Панель строится под запрошенные регионы, поэтому произвольные коды работают.
+    r = client.post(
+        "/v1/forecast/run",
+        json={
+            "method": "GRADIENT_BOOSTING",
+            "regions": ["19", "23"],  # напр. id регионов из справочника
+            "horizonMonths": 4,
+            "planningType": "PLANNED",
+            "save": False,
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert {row["regionCode"] for row in body["geo"]} == {"19", "23"}
+    assert len(body["regions"][0]["forecast"]) == 4
+
+
 def test_forecast_with_saved_model_reports_model_method():
     # Обучаем RANDOM_FOREST, затем прогоняем прогноз по его id, оставляя method по
     # умолчанию (GRADIENT_BOOSTING). Ответ должен отражать метод модели, а не запроса.

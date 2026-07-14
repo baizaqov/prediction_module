@@ -21,7 +21,7 @@ from ..config import get_settings
 from ..integrations.kazhydromet import KazhydrometClient
 from ..ml import pipeline
 from ..ml.registry import METHOD_LABELS_RU, ForecastMethod, TaskType
-from ..ml.synthetic import DEFAULT_REGIONS, default_dataset
+from ..ml.synthetic import DEFAULT_REGIONS, default_dataset, panel_for_regions
 from ..models import ClimateObservation, ForecastModel, ForecastRun
 from ..security import Principal
 
@@ -123,8 +123,11 @@ def _risk_level(peak: float, hist_mean: float, hist_std: float) -> str:
 
 
 def run_forecast(session: Session, req, principal: Principal) -> dict:
-    panel = _modeling_panel()
+    # Регионы приходят из справочника АТЕ (dict.d_ates) — произвольные коды; синтетическую
+    # панель строим ровно под запрошенные регионы, чтобы у каждого была история (иначе
+    # forecast_region не найдёт ряд). Пустой список = все регионы-заглушки.
     regions = req.regions or DEFAULT_REGIONS
+    panel = panel_for_regions(regions)
 
     target = get_settings().accuracy_target
 
