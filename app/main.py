@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from .config import get_settings
 from .db import init_db
 from .errors import ForecastError, error_body, forecast_error_handler
-from .routers import climate, forecast, health, meta
+from .routers import climate, forecast, health, meta, risk
 
 logging.basicConfig(level=logging.INFO)
 
@@ -63,3 +63,4 @@ app.include_router(health.router)
 app.include_router(meta.router)
 app.include_router(climate.router)
 app.include_router(forecast.router)
+app.include_router(risk.router)

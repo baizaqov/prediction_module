@@ -50,6 +50,8 @@ def init_db(retries: int = 10, delay_seconds: float = 3.0) -> None:
     выполняется с ограниченным числом повторов, а не падает с первой попытки.
     """
     from . import models  # noqa: F401  (регистрация моделей в metadata)
+    from .risk import catalog_loader
+    from .risk import models as risk_models  # noqa: F401  (регистрация таблиц bb_risk)
 
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
@@ -58,7 +60,11 @@ def init_db(retries: int = 10, delay_seconds: float = 3.0) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {_schema}"))
                     conn.execute(text(f"GRANT ALL ON SCHEMA {_schema} TO gisbb_service"))
+                    conn.execute(text("CREATE SCHEMA IF NOT EXISTS bb_risk"))
+                    conn.execute(text("GRANT ALL ON SCHEMA bb_risk TO gisbb_service"))
             Base.metadata.create_all(engine)
+            risk_models.RiskBase.metadata.create_all(engine)
+            catalog_loader.seed()
             return
         except OperationalError as exc:
             last_error = exc
