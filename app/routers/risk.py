@@ -17,10 +17,12 @@ from ..risk import service
 from ..risk.schemas import (
     AssessmentRequest,
     AssessmentResultOut,
+    AssessmentSummaryOut,
     FactorOut,
     InfectionOut,
     Panel,
 )
+from ..schemas import PageResponse
 from ..security import PrincipalDep, require_roles
 
 router = APIRouter(prefix="/v1/risk", tags=["risk"])
@@ -60,6 +62,27 @@ def list_factors(code: str, session: SessionDep, principal: PrincipalDep,
     if service.get_infection(session, code) is None:
         raise ForecastError(f"Неизвестная инфекция: {code}", status_code=404, error_type="NOT_FOUND")
     return [_factor_out(f) for f in service.list_factors(session, code, panel.value)]
+
+
+@router.get("/assessments", response_model=PageResponse,
+            summary="Сохранённые оценки риска (список)")
+def list_assessments(session: SessionDep, principal: PrincipalDep,
+                     infectionCode: str | None = Query(None, description="Код инфекции"),
+                     regionCode: str | None = Query(None, description="Код региона (КАТО)"),
+                     period: str | None = Query(None, description="Отчётный период"),
+                     page: int = Query(0, ge=0),
+                     size: int = Query(20, ge=1, le=200),
+                     _=Depends(require_roles(*READ_ROLES))):
+    items, total = service.list_assessments(
+        session,
+        infection_code=infectionCode,
+        region_code=regionCode,
+        period=period,
+        page=page,
+        size=size,
+    )
+    content = [AssessmentSummaryOut(**item) for item in items]
+    return PageResponse(content=content, page=page, size=size, totalElements=total)
 
 
 @router.post("/assessments/preview", response_model=AssessmentResultOut,

@@ -46,6 +46,72 @@ def _to_catalog_dicts(factors: list[Factor]) -> list[dict]:
     ]
 
 
+def list_assessments(
+    session: Session,
+    *,
+    infection_code: str | None = None,
+    region_code: str | None = None,
+    period: str | None = None,
+    page: int = 0,
+    size: int = 20,
+) -> tuple[list[dict], int]:
+    """Список сохранённых оценок с фильтрами и пагинацией (журнал, GET /v1/risk/assessments).
+
+    Расчётные величины в БД не хранятся (миграций пока нет): уровень и признак
+    красного триггера пересчитываются по сохранённым баллам и текущему каталогу —
+    так же, как это делает assess().
+    """
+    query = session.query(Assessment)
+    if infection_code:
+        query = query.filter(Assessment.infection_code == infection_code)
+    if region_code:
+        query = query.filter(Assessment.region_code == region_code)
+    if period:
+        query = query.filter(Assessment.period == period)
+
+    total = query.count()
+    rows = list(
+        query.order_by(Assessment.created_at.desc(), Assessment.id.desc())
+        .offset(page * size)
+        .limit(size)
+    )
+    if not rows:
+        return [], total
+
+    ids = [a.id for a in rows]
+    scores_by_assessment: dict[int, dict[int, int]] = {i: {} for i in ids}
+    for s in session.execute(
+        select(AssessmentScore).where(AssessmentScore.assessment_id.in_(ids))
+    ).scalars():
+        scores_by_assessment[s.assessment_id][s.factor_no] = s.score
+
+    catalogs: dict[str, list[dict]] = {}
+    names: dict[str, str] = {}
+    items = []
+    for a in rows:
+        if a.infection_code not in catalogs:
+            infection = get_infection(session, a.infection_code)
+            names[a.infection_code] = infection.name_ru if infection else a.infection_code
+            catalogs[a.infection_code] = _to_catalog_dicts(list_factors(session, a.infection_code, panel="full"))
+
+        result = scoring.calculate_risk(catalogs[a.infection_code], scores_by_assessment[a.id], panel=a.panel)
+        items.append({
+            "id": a.id,
+            "infectionCode": a.infection_code,
+            "infectionNameRu": names[a.infection_code],
+            "regionCode": a.region_code,
+            "period": a.period,
+            "panel": a.panel,
+            "level": result["level"],
+            "levelRu": result["level_ru"],
+            "hasRedTrigger": result["has_red_trigger"],
+            "assessed": result["assessed"],
+            "createdAt": a.created_at,
+        })
+
+    return items, total
+
+
 def assess(session: Session, req, principal: Principal, persist: bool = True) -> dict:
     """Рассчитать интегральный показатель по выставленным баллам и (опц.) сохранить оценку."""
     infection = get_infection(session, req.infectionCode)

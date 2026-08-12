@@ -1,6 +1,7 @@
 """Pydantic-схемы API оценки биологических рисков (camelCase, как в app/schemas.py)."""
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -76,3 +77,22 @@ class AssessmentResultOut(BaseModel):
     redTriggers: list[RedTriggerOut] = Field(default_factory=list)
     byCategory: dict[str, Any] = Field(default_factory=dict)
     byFactorClass: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssessmentSummaryOut(BaseModel):
+    """Строка списка сохранённых оценок (GET /v1/risk/assessments).
+
+    Уровень и признак триггера не хранятся в БД — пересчитываются движком по
+    сохранённым баллам и текущему каталогу, см. service.list_assessments.
+    """
+    id: int
+    infectionCode: str
+    infectionNameRu: str
+    regionCode: str
+    period: str | None = None
+    panel: str
+    level: str
+    levelRu: str
+    hasRedTrigger: bool
+    assessed: int
+    createdAt: datetime
