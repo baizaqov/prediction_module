@@ -82,8 +82,8 @@ class AssessmentResultOut(BaseModel):
 class AssessmentSummaryOut(BaseModel):
     """Строка списка сохранённых оценок (GET /v1/risk/assessments).
 
-    Уровень и признак триггера не хранятся в БД — пересчитываются движком по
-    сохранённым баллам и текущему каталогу, см. service.list_assessments.
+    Уровень и признак триггера — снимок результата расчёта на момент сохранения оценки
+    (T-07), читаются из БД как есть, см. service.list_assessments.
     """
     id: int
     infectionCode: str

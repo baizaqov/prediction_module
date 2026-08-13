@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, MetaData, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, MetaData, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -64,7 +64,14 @@ class Factor(RiskBase):
 
 
 class Assessment(RiskBase):
-    """Оценка региона по инфекции за период: набор выставленных баллов по факторам."""
+    """Оценка региона по инфекции за период: набор выставленных баллов по факторам.
+
+    Результат расчёта (``panel_size``..``has_red_trigger``) заполняется из
+    ``scoring.calculate_risk`` в момент сохранения (T-07) и дальше не пересчитывается:
+    правка веса фактора в каталоге не должна задним числом менять уже сохранённые оценки
+    (см. CLAUDE.md, «Веса и история»). Снимок весов, по которым посчитан именно этот
+    результат, — в ``AssessmentScore.weight``.
+    """
 
     __tablename__ = "assessment"
 
@@ -76,9 +83,23 @@ class Assessment(RiskBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     created_by: Mapped[dict] = mapped_column(JSON, default=dict)
 
+    panel_size: Mapped[int] = mapped_column(Integer, default=0)
+    assessed: Mapped[int] = mapped_column(Integer, default=0)
+    integral_index: Mapped[float | None] = mapped_column(Float, nullable=True)
+    completeness: Mapped[float] = mapped_column(Float, default=0.0)
+    adjusted_index: Mapped[float | None] = mapped_column(Float, nullable=True)
+    level: Mapped[str] = mapped_column(String(16))
+    level_ru: Mapped[str] = mapped_column(String(255))
+    has_red_trigger: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class AssessmentScore(RiskBase):
-    """Балл 0..4, выставленный фактору в рамках оценки."""
+    """Балл 0..4, выставленный фактору в рамках оценки.
+
+    ``weight`` — снимок ``Factor.weight`` на момент сохранения оценки (T-07), а не текущее
+    значение из каталога: правка веса в каталоге не должна менять состав уже сохранённого
+    расчёта.
+    """
 
     __tablename__ = "assessment_score"
 
@@ -86,3 +107,4 @@ class AssessmentScore(RiskBase):
         ForeignKey("assessment.id", ondelete="CASCADE"), primary_key=True)
     factor_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     score: Mapped[int] = mapped_column(Integer)
+    weight: Mapped[int] = mapped_column(Integer)

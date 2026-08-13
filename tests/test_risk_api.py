@@ -1,11 +1,31 @@
 """Smoke-тесты API оценки рисков: каталоги, факторы, расчёт и сохранение оценки."""
 from fastapi.testclient import TestClient
 
-from app.db import init_db
+from app.db import SessionLocal, init_db
 from app.main import app
+from app.risk.models import Assessment, AssessmentScore, Factor
 
 init_db()
 client = TestClient(app)
+
+
+def _get_factor_weight(infection_code: str, factor_no: int) -> int:
+    session = SessionLocal()
+    try:
+        return session.get(Factor, (infection_code, factor_no)).weight
+    finally:
+        session.close()
+
+
+def _set_factor_weight(infection_code: str, factor_no: int, weight: int) -> None:
+    """Смоделировать правку веса в справочнике (как это будет делать Эксперт после T-13)."""
+    session = SessionLocal()
+    try:
+        factor = session.get(Factor, (infection_code, factor_no))
+        factor.weight = weight
+        session.commit()
+    finally:
+        session.close()
 
 
 def test_infections_seeded():
@@ -162,3 +182,112 @@ def test_list_assessments_empty_result():
     data = r.json()
     assert data["content"] == []
     assert data["totalElements"] == 0
+
+
+def test_saved_assessment_result_and_weight_snapshot_match_engine_and_db():
+    """T-07: сохранённые расчётные величины и снимок весов совпадают с ответом API и с БД."""
+    weight_1 = _get_factor_weight("plague", 1)
+    weight_2 = _get_factor_weight("plague", 2)
+
+    body = {
+        "infectionCode": "plague",
+        "regionCode": "KZ-T07-DB",
+        "period": "2026-T07",
+        "panel": "basic",
+        "scores": {"1": 3, "2": 2},
+    }
+    r = client.post("/v1/risk/assessments", json=body)
+    assert r.status_code == 200
+    saved = r.json()
+
+    session = SessionLocal()
+    try:
+        row = session.get(Assessment, saved["assessmentId"])
+        assert row is not None
+        assert row.panel_size == saved["panelSize"]
+        assert row.assessed == saved["assessed"] == 2
+        assert row.integral_index == saved["integralIndex"]
+        assert row.completeness == saved["completeness"]
+        assert row.adjusted_index == saved["adjustedIndex"]
+        assert row.level == saved["level"]
+        assert row.level_ru == saved["levelRu"]
+        assert row.has_red_trigger == saved["hasRedTrigger"]
+
+        scores = {
+            s.factor_no: s.weight
+            for s in session.query(AssessmentScore).filter(AssessmentScore.assessment_id == row.id)
+        }
+        assert scores[1] == weight_1
+        assert scores[2] == weight_2
+    finally:
+        session.close()
+
+
+def test_journal_returns_same_values_as_post_response():
+    body = {
+        "infectionCode": "cholera",
+        "regionCode": "KZ-T07-JOURNAL",
+        "period": "2026-T07",
+        "panel": "basic",
+        "scores": {"1": 4},
+    }
+    r = client.post("/v1/risk/assessments", json=body)
+    assert r.status_code == 200
+    saved = r.json()
+
+    r2 = client.get("/v1/risk/assessments", params={"regionCode": "KZ-T07-JOURNAL"})
+    assert r2.status_code == 200
+    row = r2.json()["content"][0]
+
+    assert row["id"] == saved["assessmentId"]
+    assert row["level"] == saved["level"]
+    assert row["levelRu"] == saved["levelRu"]
+    assert row["hasRedTrigger"] == saved["hasRedTrigger"]
+    assert row["assessed"] == saved["assessed"]
+
+
+def test_weight_edit_freezes_saved_assessment_but_applies_to_new_one():
+    """Главный тест T-07 (снимок весов).
+
+    Правка веса фактора в справочнике после сохранения оценки не должна задним числом
+    менять её уровень (ни при чтении журнала, ни при повторном чтении той же записи) —
+    он читается из снимка. Новая оценка, рассчитанная после правки, использует уже новый вес.
+    """
+    original_weight = _get_factor_weight("plague", 1)
+    try:
+        _set_factor_weight("plague", 1, 1)  # детерминированная стартовая точка
+
+        body = {
+            "infectionCode": "plague",
+            "regionCode": "KZ-T07-WEIGHTEDIT",
+            "panel": "basic",
+            "scores": {"1": 4},
+        }
+        r1 = client.post("/v1/risk/assessments", json=body)
+        assert r1.status_code == 200
+        first = r1.json()
+        assert first["integralIndex"] == 4.0
+        assert first["level"] == "medium"  # 3.0 <= 4.0 < 5.0
+
+        # Правка каталога после сохранения — как правка веса Экспертом (T-13).
+        _set_factor_weight("plague", 1, 4)
+
+        # Прошлая оценка не меняется: по новому весу это было бы 4*4=16 -> very_high,
+        # но журнал обязан вернуть исходный medium из снимка.
+        r_journal = client.get("/v1/risk/assessments", params={"regionCode": "KZ-T07-WEIGHTEDIT"})
+        assert r_journal.status_code == 200
+        row = r_journal.json()["content"][0]
+        assert row["id"] == first["assessmentId"]
+        assert row["level"] == "medium"
+        assert row["levelRu"] == first["levelRu"]
+        assert row["hasRedTrigger"] == first["hasRedTrigger"]
+
+        # Новая оценка того же расчёта — уже по новому весу.
+        r2 = client.post("/v1/risk/assessments", json=body)
+        assert r2.status_code == 200
+        second = r2.json()
+        assert second["assessmentId"] != first["assessmentId"]
+        assert second["integralIndex"] == 16.0
+        assert second["level"] == "very_high"
+    finally:
+        _set_factor_weight("plague", 1, original_weight)

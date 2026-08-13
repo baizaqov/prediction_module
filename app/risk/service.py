@@ -57,9 +57,9 @@ def list_assessments(
 ) -> tuple[list[dict], int]:
     """Список сохранённых оценок с фильтрами и пагинацией (журнал, GET /v1/risk/assessments).
 
-    Расчётные величины в БД не хранятся (миграций пока нет): уровень и признак
-    красного триггера пересчитываются по сохранённым баллам и текущему каталогу —
-    так же, как это делает assess().
+    Уровень и признак красного триггера читаются из уже сохранённого результата расчёта
+    (T-07), а не пересчитываются по текущему каталогу — иначе правка веса фактора задним
+    числом меняла бы уровень прошлых оценок.
     """
     query = session.query(Assessment)
     if infection_code:
@@ -78,23 +78,13 @@ def list_assessments(
     if not rows:
         return [], total
 
-    ids = [a.id for a in rows]
-    scores_by_assessment: dict[int, dict[int, int]] = {i: {} for i in ids}
-    for s in session.execute(
-        select(AssessmentScore).where(AssessmentScore.assessment_id.in_(ids))
-    ).scalars():
-        scores_by_assessment[s.assessment_id][s.factor_no] = s.score
-
-    catalogs: dict[str, list[dict]] = {}
     names: dict[str, str] = {}
     items = []
     for a in rows:
-        if a.infection_code not in catalogs:
+        if a.infection_code not in names:
             infection = get_infection(session, a.infection_code)
             names[a.infection_code] = infection.name_ru if infection else a.infection_code
-            catalogs[a.infection_code] = _to_catalog_dicts(list_factors(session, a.infection_code, panel="full"))
 
-        result = scoring.calculate_risk(catalogs[a.infection_code], scores_by_assessment[a.id], panel=a.panel)
         items.append({
             "id": a.id,
             "infectionCode": a.infection_code,
@@ -102,10 +92,10 @@ def list_assessments(
             "regionCode": a.region_code,
             "period": a.period,
             "panel": a.panel,
-            "level": result["level"],
-            "levelRu": result["level_ru"],
-            "hasRedTrigger": result["has_red_trigger"],
-            "assessed": result["assessed"],
+            "level": a.level,
+            "levelRu": a.level_ru,
+            "hasRedTrigger": a.has_red_trigger,
+            "assessed": a.assessed,
             "createdAt": a.created_at,
         })
 
@@ -131,13 +121,31 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
             period=req.period,
             panel=panel,
             created_by=asdict(principal.user_info) if principal else {},
+            panel_size=result["panel_size"],
+            assessed=result["assessed"],
+            integral_index=result["integral_index"],
+            completeness=result["completeness"],
+            adjusted_index=result["adjusted_index"],
+            level=result["level"],
+            level_ru=result["level_ru"],
+            has_red_trigger=result["has_red_trigger"],
         )
         session.add(assessment)
         session.flush()
+        # Снимок веса берём из того же каталога, что уже пересчитал результат выше — не из
+        # req.scores напрямую: фактор, которого нет в каталоге инфекции, движок и так
+        # игнорирует, поэтому для него нет веса для снимка и строка не сохраняется.
+        weight_by_no = {f["no"]: f["weight"] for f in catalog}
         for no, score in (req.scores or {}).items():
             if score is None:
                 continue
-            session.add(AssessmentScore(assessment_id=assessment.id, factor_no=int(no), score=int(score)))
+            factor_no = int(no)
+            weight = weight_by_no.get(factor_no)
+            if weight is None:
+                continue
+            session.add(AssessmentScore(
+                assessment_id=assessment.id, factor_no=factor_no, score=int(score), weight=int(weight),
+            ))
         session.commit()
         assessment_id = assessment.id
 
