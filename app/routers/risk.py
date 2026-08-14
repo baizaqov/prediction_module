@@ -10,24 +10,45 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from ..config import Settings, get_settings
 from ..db import get_session
 from ..errors import ForecastError
-from ..roles import READ_ROLES, WRITE_ROLES
+from ..roles import EXPERT, READ_ROLES, WRITE_ROLES
 from ..risk import service
 from ..risk.schemas import (
     AssessmentRequest,
     AssessmentResultOut,
     AssessmentSummaryOut,
     FactorOut,
+    FactorWeightUpdate,
     InfectionOut,
     Panel,
 )
 from ..schemas import PageResponse
-from ..security import PrincipalDep, require_roles
+from ..security import Principal, PrincipalDep, require_roles
 
 router = APIRouter(prefix="/v1/risk", tags=["risk"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def _require_expert(
+    principal: PrincipalDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Principal:
+    """Разрешить правку веса только Эксперту; при локальном отключении JWT доступ открыт."""
+    if not settings.internal_token_enabled:
+        return principal
+    if not principal.has_role(EXPERT):
+        raise ForecastError(
+            "Недостаточно прав для изменения веса фактора",
+            status_code=403,
+            error_type="ACCESS_DENIED",
+        )
+    return principal
+
+
+ExpertPrincipalDep = Annotated[Principal, Depends(_require_expert)]
 
 
 def _infection_out(i) -> InfectionOut:
@@ -62,6 +83,37 @@ def list_factors(code: str, session: SessionDep, principal: PrincipalDep,
     if service.get_infection(session, code) is None:
         raise ForecastError(f"Неизвестная инфекция: {code}", status_code=404, error_type="NOT_FOUND")
     return [_factor_out(f) for f in service.list_factors(session, code, panel.value, principal)]
+
+
+@router.patch("/infections/{code}/factors/{factorNo}/weight", response_model=FactorOut,
+              summary="Изменить вес фактора (только Эксперт госоргана)")
+def update_factor_weight(
+    code: str,
+    factorNo: int,
+    body: FactorWeightUpdate,
+    session: SessionDep,
+    principal: ExpertPrincipalDep,
+):
+    """Изменить текущий вес; фактическая правка создаёт одну запись истории."""
+    if service.get_infection(session, code) is None:
+        raise ForecastError(f"Неизвестная инфекция: {code}", status_code=404, error_type="NOT_FOUND")
+    try:
+        factor, _ = service.update_factor_weight(
+            session,
+            infection_code=code,
+            factor_no=factorNo,
+            new_weight=body.weight,
+            principal=principal,
+        )
+    except ValueError as exc:
+        raise ForecastError(str(exc), status_code=422, error_type="VALIDATION_ERROR") from exc
+    if factor is None:
+        raise ForecastError(
+            f"Фактор {factorNo} не найден для инфекции: {code}",
+            status_code=404,
+            error_type="NOT_FOUND",
+        )
+    return _factor_out(factor)
 
 
 @router.get("/assessments", response_model=PageResponse,

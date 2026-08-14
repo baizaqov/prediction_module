@@ -42,6 +42,12 @@ class FactorOut(BaseModel):
     sourceData: str | None = None
 
 
+class FactorWeightUpdate(BaseModel):
+    """Запрос на изменение текущего веса фактора Экспертом (T-13)."""
+
+    weight: int = Field(ge=1, le=4)
+
+
 class AssessmentRequest(BaseModel):
     infectionCode: str
     regionCode: str

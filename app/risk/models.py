@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, ForeignKeyConstraint, Integer, MetaData, String, Text,
+    Boolean, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, MetaData, String, Text, event,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -90,6 +90,35 @@ class FactorOrganization(RiskBase):
     infection_code: Mapped[str] = mapped_column(String(32), primary_key=True)
     factor_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     organization_code: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+
+class FactorWeightChange(RiskBase):
+    """Неизменяемая запись истории фактической правки веса фактора (T-12)."""
+
+    __tablename__ = "factor_weight_change"
+    __table_args__ = (
+        Index("ix_bb_risk_factor_weight_change_factor", "infection_code", "factor_no"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    infection_code: Mapped[str] = mapped_column(String(32))
+    factor_no: Mapped[int] = mapped_column(Integer)
+    old_weight: Mapped[int] = mapped_column(Integer)
+    new_weight: Mapped[int] = mapped_column(Integer)
+    author: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+@event.listens_for(FactorWeightChange, "before_update")
+def _prevent_factor_weight_change_update(_, __, ___) -> None:
+    """История весов append-only: ORM не может изменить существующую запись."""
+    raise ValueError("Записи истории изменения весов нельзя изменять")
+
+
+@event.listens_for(FactorWeightChange, "before_delete")
+def _prevent_factor_weight_change_delete(_, __, ___) -> None:
+    """История весов append-only: ORM не может удалить существующую запись."""
+    raise ValueError("Записи истории изменения весов нельзя удалять")
 
 
 class Assessment(RiskBase):

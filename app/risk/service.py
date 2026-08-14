@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..security import Principal
 from . import scoring
 from .access import FactorAccessDenied, accessible_factor_numbers, ensure_scores_accessible
-from .models import Assessment, AssessmentScore, Factor, Infection
+from .models import Assessment, AssessmentScore, Factor, FactorWeightChange, Infection
 
 
 def list_infections(session: Session) -> list[Infection]:
@@ -36,6 +36,48 @@ def list_factors(
     if accessible_nos is not None:
         stmt = stmt.where(Factor.no.in_(accessible_nos))
     return list(session.execute(stmt.order_by(Factor.no)).scalars())
+
+
+def update_factor_weight(
+    session: Session,
+    *,
+    infection_code: str,
+    factor_no: int,
+    new_weight: int,
+    principal: Principal,
+) -> tuple[Factor | None, bool]:
+    """Изменить вес и записать историю одной транзакцией.
+
+    ``changed=False`` означает идемпотентный PATCH: передан уже действующий вес, поэтому
+    состояние каталога и история не меняются. Проверку роли выполняет API до вызова
+    сервиса; здесь ``principal`` нужен для автора неизменяемой записи истории.
+    """
+    if not 1 <= new_weight <= 4:
+        raise ValueError("Вес фактора должен быть целым числом от 1 до 4")
+
+    factor = session.get(Factor, (infection_code, factor_no))
+    if factor is None:
+        return None, False
+
+    old_weight = factor.weight
+    if old_weight == new_weight:
+        return factor, False
+
+    factor.weight = new_weight
+    session.add(FactorWeightChange(
+        infection_code=infection_code,
+        factor_no=factor_no,
+        old_weight=old_weight,
+        new_weight=new_weight,
+        author=asdict(principal.user_info),
+    ))
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    return factor, True
 
 
 def _to_catalog_dicts(factors: list[Factor]) -> list[dict]:
