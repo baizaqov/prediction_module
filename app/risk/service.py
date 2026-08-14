@@ -154,6 +154,47 @@ def list_assessments(
     return items, total
 
 
+def get_assessment_detail(session: Session, assessment_id: int) -> dict | None:
+    """Вернуть карточку сохранённой оценки без перерасчёта и чтения текущих весов.
+
+    ``AssessmentScore`` не связан внешним ключом с каталогом факторов. Это позволяет
+    сохранить в карточке балл и вес фактора, даже если его уже удалили из каталога.
+    """
+    assessment = session.get(Assessment, assessment_id)
+    if assessment is None:
+        return None
+
+    infection = get_infection(session, assessment.infection_code)
+    scores = list(
+        session.execute(
+            select(AssessmentScore)
+            .where(AssessmentScore.assessment_id == assessment.id)
+            .order_by(AssessmentScore.factor_no)
+        ).scalars()
+    )
+    return {
+        "id": assessment.id,
+        "infectionCode": assessment.infection_code,
+        "infectionNameRu": infection.name_ru if infection else assessment.infection_code,
+        "regionCode": assessment.region_code,
+        "period": assessment.period,
+        "panel": assessment.panel,
+        "createdAt": assessment.created_at,
+        "panelSize": assessment.panel_size,
+        "assessed": assessment.assessed,
+        "integralIndex": assessment.integral_index,
+        "completeness": assessment.completeness,
+        "adjustedIndex": assessment.adjusted_index,
+        "level": assessment.level,
+        "levelRu": assessment.level_ru,
+        "hasRedTrigger": assessment.has_red_trigger,
+        "scores": [
+            {"factorNo": score.factor_no, "score": score.score, "weight": score.weight}
+            for score in scores
+        ],
+    }
+
+
 def assess(session: Session, req, principal: Principal, persist: bool = True) -> dict:
     """Рассчитать интегральный показатель по выставленным баллам и (опц.) сохранить оценку."""
     infection = get_infection(session, req.infectionCode)

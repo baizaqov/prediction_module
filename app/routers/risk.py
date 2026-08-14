@@ -16,6 +16,7 @@ from ..errors import ForecastError
 from ..roles import EXPERT, READ_ROLES, WRITE_ROLES
 from ..risk import service
 from ..risk.schemas import (
+    AssessmentDetailOut,
     AssessmentRequest,
     AssessmentResultOut,
     AssessmentSummaryOut,
@@ -135,6 +136,21 @@ def list_assessments(session: SessionDep, principal: PrincipalDep,
     )
     content = [AssessmentSummaryOut(**item) for item in items]
     return PageResponse(content=content, page=page, size=size, totalElements=total)
+
+
+@router.get("/assessments/{assessmentId}", response_model=AssessmentDetailOut,
+            summary="Карточка сохранённой оценки риска")
+def get_assessment(assessmentId: int, session: SessionDep, principal: PrincipalDep,
+                   _=Depends(require_roles(*READ_ROLES))):
+    """Выдать сохранённые баллы, весовые снимки и итог оценки без перерасчёта."""
+    detail = service.get_assessment_detail(session, assessmentId)
+    if detail is None:
+        raise ForecastError(
+            f"Оценка риска не найдена: {assessmentId}",
+            status_code=404,
+            error_type="NOT_FOUND",
+        )
+    return AssessmentDetailOut(**detail)
 
 
 @router.post("/assessments/preview", response_model=AssessmentResultOut,

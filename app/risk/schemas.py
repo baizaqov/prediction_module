@@ -102,3 +102,36 @@ class AssessmentSummaryOut(BaseModel):
     hasRedTrigger: bool
     assessed: int
     createdAt: datetime
+
+
+class AssessmentScoreOut(BaseModel):
+    """Сохранённый балл и вес фактора на момент расчёта оценки."""
+
+    factorNo: int
+    score: int
+    weight: int
+
+
+class AssessmentDetailOut(BaseModel):
+    """Карточка ранее сохранённой оценки (T-22).
+
+    Все итоговые поля и веса — исторический снимок из ``assessment`` и
+    ``assessment_score``. Текущий каталог факторов для формирования ответа не читается.
+    """
+
+    id: int
+    infectionCode: str
+    infectionNameRu: str
+    regionCode: str
+    period: str | None = None
+    panel: str
+    createdAt: datetime
+    panelSize: int
+    assessed: int
+    integralIndex: float | None = None
+    completeness: float
+    adjustedIndex: float | None = None
+    level: str
+    levelRu: str
+    hasRedTrigger: bool
+    scores: list[AssessmentScoreOut] = Field(default_factory=list)
