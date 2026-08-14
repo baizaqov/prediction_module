@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, MetaData, String, Text
+from sqlalchemy import (
+    Boolean, DateTime, Float, ForeignKey, ForeignKeyConstraint, Integer, MetaData, String, Text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -61,6 +63,33 @@ class Factor(RiskBase):
     normative_doc: Mapped[str | None] = mapped_column(Text, nullable=True)
     responsible: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Organization(RiskBase):
+    """Орган, которому могут быть назначены факторы риска."""
+
+    __tablename__ = "organization"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name_ru: Mapped[str] = mapped_column(String(255))
+
+
+class FactorOrganization(RiskBase):
+    """Машиночитаемая связь «фактор ↔ орган» (многие-ко-многим)."""
+
+    __tablename__ = "factor_organization"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["infection_code", "factor_no"],
+            ["factor.infection_code", "factor.no"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(["organization_code"], ["organization.code"], ondelete="CASCADE"),
+    )
+
+    infection_code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    factor_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_code: Mapped[str] = mapped_column(String(32), primary_key=True)
 
 
 class Assessment(RiskBase):

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..security import Principal
 from . import scoring
+from .access import FactorAccessDenied, accessible_factor_numbers, ensure_scores_accessible
 from .models import Assessment, AssessmentScore, Factor, Infection
 
 
@@ -19,12 +20,21 @@ def get_infection(session: Session, code: str) -> Infection | None:
     return session.get(Infection, code)
 
 
-def list_factors(session: Session, infection_code: str, panel: str = "full") -> list[Factor]:
+def list_factors(
+    session: Session,
+    infection_code: str,
+    panel: str = "full",
+    principal: Principal | None = None,
+) -> list[Factor]:
+    """Каталог панели с учётом зоны ответственности, если передан принципал."""
     stmt = select(Factor).where(Factor.infection_code == infection_code)
     if panel == "basic":
         stmt = stmt.where(Factor.tier == "basic")
     elif panel == "extended":
         stmt = stmt.where(Factor.tier == "extended")
+    accessible_nos = accessible_factor_numbers(session, infection_code, principal)
+    if accessible_nos is not None:
+        stmt = stmt.where(Factor.no.in_(accessible_nos))
     return list(session.execute(stmt.order_by(Factor.no)).scalars())
 
 
@@ -107,6 +117,10 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
     infection = get_infection(session, req.infectionCode)
     if infection is None:
         raise ValueError(f"Неизвестная инфекция: {req.infectionCode}")
+
+    # Проверка происходит до расчёта и тем более до создания Assessment: отказ по
+    # одному чужому фактору не оставляет в транзакции частично сохранённых строк.
+    ensure_scores_accessible(session, req.infectionCode, req.scores or {}, principal)
 
     # Полный каталог инфекции; панель выбирает scoring.calculate_risk по полю tier.
     catalog = _to_catalog_dicts(list_factors(session, req.infectionCode, panel="full"))

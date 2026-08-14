@@ -61,7 +61,7 @@ def list_factors(code: str, session: SessionDep, principal: PrincipalDep,
                  _=Depends(require_roles(*READ_ROLES))):
     if service.get_infection(session, code) is None:
         raise ForecastError(f"Неизвестная инфекция: {code}", status_code=404, error_type="NOT_FOUND")
-    return [_factor_out(f) for f in service.list_factors(session, code, panel.value)]
+    return [_factor_out(f) for f in service.list_factors(session, code, panel.value, principal)]
 
 
 @router.get("/assessments", response_model=PageResponse,
@@ -91,6 +91,8 @@ def preview_assessment(body: AssessmentRequest, session: SessionDep, principal: 
                        _=Depends(require_roles(*READ_ROLES))):
     try:
         return service.assess(session, body, principal, persist=False)
+    except service.FactorAccessDenied as exc:
+        raise ForecastError(str(exc), status_code=403, error_type="ACCESS_DENIED") from exc
     except ValueError as exc:
         raise ForecastError(str(exc)) from exc
 
@@ -101,5 +103,7 @@ def create_assessment(body: AssessmentRequest, session: SessionDep, principal: P
                       _=Depends(require_roles(*WRITE_ROLES))):
     try:
         return service.assess(session, body, principal, persist=True)
+    except service.FactorAccessDenied as exc:
+        raise ForecastError(str(exc), status_code=403, error_type="ACCESS_DENIED") from exc
     except ValueError as exc:
         raise ForecastError(str(exc)) from exc

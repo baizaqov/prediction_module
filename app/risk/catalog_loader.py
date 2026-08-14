@@ -12,7 +12,7 @@ import pathlib
 from typing import Any
 
 from ..db import SessionLocal
-from .models import Factor, Infection
+from .models import Factor, FactorOrganization, Infection, Organization
 
 log = logging.getLogger("gisbb-forecast.risk.catalog")
 
@@ -27,6 +27,28 @@ def _load_json(name: str) -> Any:
 def _read_infections_registry() -> list[dict]:
     registry = _load_json("infections.json")
     return registry.get("infections", []) if isinstance(registry, dict) else registry
+
+
+def _seed_factor_organizations(session) -> None:
+    """Первично загрузить временную матрицу Приложения 4.
+
+    Уже заполненная связь не перезаписывается при старте: последующая матрица должна
+    поставляться отдельной миграцией данных, а не неявно заменяться файловым сидом.
+    JSON нужен для чистой БД и SQLite-тестов; авторизация читает только таблицы.
+    """
+    matrix = _load_json("factor_organizations.json")
+    for org in matrix.get("organizations", []):
+        session.merge(Organization(code=org["code"], name_ru=org["name_ru"]))
+
+    if session.query(FactorOrganization).count():
+        return
+
+    for row in matrix.get("assignments", []):
+        session.add(FactorOrganization(
+            infection_code=row["infection_code"],
+            factor_no=int(row["factor_no"]),
+            organization_code=row["organization_code"],
+        ))
 
 
 def seed() -> None:
@@ -89,6 +111,8 @@ def seed() -> None:
                     source_data=f.get("source_data"),
                 ))
             log.info("Загружен каталог факторов %s: %d факторов", code, len(factors))
+
+        _seed_factor_organizations(session)
 
         session.commit()
     except Exception:
