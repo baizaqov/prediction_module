@@ -114,6 +114,16 @@ class AssessmentScoreOut(BaseModel):
     weight: int
 
 
+class FactorWeightChangeOut(BaseModel):
+    """Строка истории изменения веса фактора (T-12A)."""
+
+    factorNo: int
+    oldWeight: int
+    newWeight: int
+    author: dict[str, Any] = Field(default_factory=dict)
+    createdAt: datetime
+
+
 class AssessmentDetailOut(BaseModel):
     """Карточка ранее сохранённой оценки (T-22).
 

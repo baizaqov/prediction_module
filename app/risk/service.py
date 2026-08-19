@@ -80,6 +80,42 @@ def update_factor_weight(
     return factor, True
 
 
+def list_weight_history(
+    session: Session,
+    infection_code: str,
+    principal: Principal | None,
+    *,
+    factor_no: int | None = None,
+    page: int = 0,
+    size: int = 20,
+) -> tuple[list[FactorWeightChange], int]:
+    """История правок веса, видимая роли только по доступным ей факторам (T-12A).
+
+    Правку веса делает только Эксперт (T-13), но смотреть историю может любая роль —
+    в пределах своей зоны ответственности, как и каталог (см. list_factors).
+    """
+    query = session.query(FactorWeightChange).filter(
+        FactorWeightChange.infection_code == infection_code
+    )
+
+    accessible_nos = accessible_factor_numbers(session, infection_code, principal)
+    if accessible_nos is not None:
+        if not accessible_nos:
+            return [], 0
+        query = query.filter(FactorWeightChange.factor_no.in_(accessible_nos))
+
+    if factor_no is not None:
+        query = query.filter(FactorWeightChange.factor_no == factor_no)
+
+    total = query.count()
+    rows = list(
+        query.order_by(FactorWeightChange.created_at.desc(), FactorWeightChange.id.desc())
+        .offset(page * size)
+        .limit(size)
+    )
+    return rows, total
+
+
 def _to_catalog_dicts(factors: list[Factor]) -> list[dict]:
     """Каталог факторов в форме, которую ожидает scoring.calculate_risk."""
     return [

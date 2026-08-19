@@ -21,6 +21,7 @@ from ..risk.schemas import (
     AssessmentResultOut,
     AssessmentSummaryOut,
     FactorOut,
+    FactorWeightChangeOut,
     FactorWeightUpdate,
     InfectionOut,
     Panel,
@@ -115,6 +116,29 @@ def update_factor_weight(
             error_type="NOT_FOUND",
         )
     return _factor_out(factor)
+
+
+@router.get("/infections/{code}/weight-history", response_model=PageResponse,
+            summary="История изменения весов факторов (T-12A)")
+def get_weight_history(code: str, session: SessionDep, principal: PrincipalDep,
+                       factorNo: int | None = Query(None, description="Ограничить одним фактором"),
+                       page: int = Query(0, ge=0),
+                       size: int = Query(20, ge=1, le=200),
+                       _=Depends(require_roles(*READ_ROLES))):
+    """Смотреть может любая роль, но только по доступным ей факторам; правит вес Эксперт (T-13)."""
+    if service.get_infection(session, code) is None:
+        raise ForecastError(f"Неизвестная инфекция: {code}", status_code=404, error_type="NOT_FOUND")
+    rows, total = service.list_weight_history(
+        session, code, principal, factor_no=factorNo, page=page, size=size,
+    )
+    content = [
+        FactorWeightChangeOut(
+            factorNo=row.factor_no, oldWeight=row.old_weight, newWeight=row.new_weight,
+            author=row.author, createdAt=row.created_at,
+        )
+        for row in rows
+    ]
+    return PageResponse(content=content, page=page, size=size, totalElements=total)
 
 
 @router.get("/assessments", response_model=PageResponse,

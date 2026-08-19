@@ -252,6 +252,73 @@ def test_saved_assessment_keeps_old_weight_snapshot_after_expert_edit():
             assert restored.status_code == 200, restored.text
 
 
+def _get_history(*roles: str, factor_no: int | None = None, **params):
+    query = dict(params)
+    if factor_no is not None:
+        query["factorNo"] = factor_no
+    return client.get(
+        f"/v1/risk/infections/{_INFECTION_CODE}/weight-history",
+        params=query,
+        headers=_headers(*roles, user_info=_AUTHOR),
+    )
+
+
+def test_weight_history_endpoint_lists_the_change_just_made():
+    """T-12A: GET-эндпоинт отдаёт то, что записал T-13 PATCH."""
+    original_weight = _factor_weight()
+    new_weight = 4 if original_weight != 4 else 3
+
+    with _authenticated_api():
+        try:
+            changed = _patch_weight(new_weight, EXPERT, user_info=_AUTHOR)
+            assert changed.status_code == 200, changed.text
+
+            response = _get_history(EXPERT, factor_no=_FACTOR_NO)
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["content"], "история не должна быть пустой сразу после правки"
+            latest = body["content"][0]
+            assert latest["factorNo"] == _FACTOR_NO
+            assert latest["oldWeight"] == original_weight
+            assert latest["newWeight"] == new_weight
+            assert latest["author"]["full_name"] == _AUTHOR["fullName"]
+        finally:
+            restored = _patch_weight(original_weight, EXPERT, user_info=_AUTHOR)
+            assert restored.status_code == 200, restored.text
+
+
+def test_weight_history_is_filtered_by_accessible_factors_for_organization_role():
+    """БА: смотреть могут все, но только по доступным им факторам (фактор 1 — МИО)."""
+    original_weight = _factor_weight()
+    new_weight = 4 if original_weight != 4 else 3
+
+    with _authenticated_api():
+        try:
+            changed = _patch_weight(new_weight, EXPERT, user_info=_AUTHOR)
+            assert changed.status_code == 200, changed.text
+
+            own = _get_history(MIO_ROLES[0], factor_no=_FACTOR_NO)
+            assert own.status_code == 200, own.text
+            assert any(row["factorNo"] == _FACTOR_NO for row in own.json()["content"])
+
+            foreign = _get_history(KSEC_ROLES[0], factor_no=_FACTOR_NO)
+            assert foreign.status_code == 200, foreign.text
+            assert foreign.json()["content"] == []
+        finally:
+            restored = _patch_weight(original_weight, EXPERT, user_info=_AUTHOR)
+            assert restored.status_code == 200, restored.text
+
+
+def test_weight_history_returns_404_for_unknown_infection():
+    with _authenticated_api():
+        response = client.get(
+            "/v1/risk/infections/unknown-disease/weight-history",
+            headers=_headers(EXPERT, user_info=_AUTHOR),
+        )
+    assert response.status_code == 404
+    assert response.json()["errors"][0]["errorType"] == "NOT_FOUND"
+
+
 def test_history_records_cannot_be_updated_or_deleted_through_orm():
     original_weight = _factor_weight()
     new_weight = 4 if original_weight != 4 else 3
