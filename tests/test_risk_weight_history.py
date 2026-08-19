@@ -212,6 +212,8 @@ def test_saved_assessment_keeps_old_weight_snapshot_after_expert_edit():
             first = client.post("/v1/risk/assessments", json={
                 "infectionCode": _INFECTION_CODE,
                 "regionCode": first_region,
+                "periodFrom": "2026-01-01",
+                "periodTo": "2026-01-01",
                 "panel": "basic",
                 "scores": {str(_FACTOR_NO): 4},
             }, headers=_headers(EXPERT, user_info=_AUTHOR))
@@ -223,6 +225,8 @@ def test_saved_assessment_keeps_old_weight_snapshot_after_expert_edit():
             second = client.post("/v1/risk/assessments", json={
                 "infectionCode": _INFECTION_CODE,
                 "regionCode": second_region,
+                "periodFrom": "2026-01-01",
+                "periodTo": "2026-01-01",
                 "panel": "basic",
                 "scores": {str(_FACTOR_NO): 4},
             }, headers=_headers(EXPERT, user_info=_AUTHOR))

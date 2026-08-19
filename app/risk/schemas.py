@@ -1,11 +1,11 @@
 """Pydantic-схемы API оценки биологических рисков (camelCase, как в app/schemas.py)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Panel(str, Enum):
@@ -51,10 +51,18 @@ class FactorWeightUpdate(BaseModel):
 class AssessmentRequest(BaseModel):
     infectionCode: str
     regionCode: str
-    period: str | None = None
+    # Отчётный период — две обязательные даты (T-06, BR-021/022), а не свободная строка.
+    periodFrom: date
+    periodTo: date
     panel: Panel = Panel.basic
     # {номер_фактора: балл 0..4}; отсутствующий фактор = не оценён
     scores: dict[int, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_period_order(self) -> "AssessmentRequest":
+        if self.periodTo < self.periodFrom:
+            raise ValueError("periodTo не может быть раньше periodFrom")
+        return self
 
 
 class RedTriggerOut(BaseModel):
@@ -67,7 +75,8 @@ class AssessmentResultOut(BaseModel):
     assessmentId: int | None = None
     infectionCode: str
     regionCode: str
-    period: str | None = None
+    periodFrom: date
+    periodTo: date
     panel: str
     panelSize: int
     assessed: int
@@ -97,7 +106,8 @@ class AssessmentSummaryOut(BaseModel):
     infectionCode: str
     infectionNameRu: str
     regionCode: str
-    period: str | None = None
+    periodFrom: date
+    periodTo: date
     panel: str
     level: str
     levelRu: str
@@ -135,7 +145,8 @@ class AssessmentDetailOut(BaseModel):
     infectionCode: str
     infectionNameRu: str
     regionCode: str
-    period: str | None = None
+    periodFrom: date
+    periodTo: date
     panel: str
     createdAt: datetime
     panelSize: int

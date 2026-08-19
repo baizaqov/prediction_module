@@ -19,6 +19,8 @@ def test_saving_assessment_with_red_trigger_logs_event(caplog):
         response = client.post("/v1/risk/assessments", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T19A-TRIGGER",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"17": 4},  # фактор с признаком «красный триггер»
         })
 
@@ -38,6 +40,8 @@ def test_saving_assessment_without_red_trigger_does_not_log_event(caplog):
         response = client.post("/v1/risk/assessments", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T19A-NORMAL",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"1": 1},
         })
 
@@ -52,6 +56,8 @@ def test_preview_with_red_trigger_does_not_log_event(caplog):
         response = client.post("/v1/risk/assessments/preview", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T19A-PREVIEW",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"17": 4},
         })
 

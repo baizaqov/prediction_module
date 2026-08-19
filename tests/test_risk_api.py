@@ -53,6 +53,8 @@ def test_preview_assessment_computes_index():
     body = {
         "infectionCode": "plague",
         "regionCode": "KZ-15",
+        "periodFrom": "2026-01-01",
+        "periodTo": "2026-01-31",
         "panel": "basic",
         "scores": {"1": 3, "2": 4},
     }
@@ -70,7 +72,8 @@ def test_create_assessment_persists():
     body = {
         "infectionCode": "plague",
         "regionCode": "KZ-15",
-        "period": "2026-весна",
+        "periodFrom": "2026-03-01",
+        "periodTo": "2026-05-31",
         "panel": "basic",
         "scores": {"1": 2, "2": 2, "5": 1},
     }
@@ -82,22 +85,54 @@ def test_create_assessment_persists():
     assert 0.0 <= data["completeness"] <= 1.0
 
 
-def _create_assessment(infection_code: str, region_code: str, period: str) -> dict:
+def test_assessment_without_period_is_rejected():
+    """T-06: период — две обязательные даты, запрос без него отклоняется."""
+    body = {"infectionCode": "plague", "regionCode": "KZ-T06-MISSING", "scores": {"1": 2}}
+    r = client.post("/v1/risk/assessments", json=body)
+    assert r.status_code == 422
+
+
+def test_assessment_with_period_to_before_period_from_is_rejected():
+    body = {
+        "infectionCode": "plague",
+        "regionCode": "KZ-T06-ORDER",
+        "periodFrom": "2026-02-10",
+        "periodTo": "2026-02-01",
+        "scores": {"1": 2},
+    }
+    r = client.post("/v1/risk/assessments", json=body)
+    assert r.status_code == 422
+
+
+def test_assessment_with_equal_period_dates_is_accepted():
+    body = {
+        "infectionCode": "plague",
+        "regionCode": "KZ-T06-EQUAL",
+        "periodFrom": "2026-02-10",
+        "periodTo": "2026-02-10",
+        "scores": {"1": 2},
+    }
+    r = client.post("/v1/risk/assessments", json=body)
+    assert r.status_code == 200, r.text
+
+
+def _create_assessment(infection_code: str, region_code: str, period_from: str, period_to: str | None = None) -> dict:
     body = {
         "infectionCode": infection_code,
         "regionCode": region_code,
-        "period": period,
+        "periodFrom": period_from,
+        "periodTo": period_to or period_from,
         "panel": "basic",
         "scores": {"1": 2},
     }
     r = client.post("/v1/risk/assessments", json=body)
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     return r.json()
 
 
 def test_list_assessments_filters_by_infection():
-    _create_assessment("tularemia", "KZ-J01", "2026-J1")
-    _create_assessment("measles", "KZ-J01", "2026-J1")
+    _create_assessment("tularemia", "KZ-J01", "2026-01-15")
+    _create_assessment("measles", "KZ-J01", "2026-01-15")
 
     r_all = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J01"})
     assert r_all.status_code == 200
@@ -112,7 +147,8 @@ def test_list_assessments_filters_by_infection():
     assert row["infectionCode"] == "tularemia"
     assert row["infectionNameRu"]
     assert row["regionCode"] == "KZ-J01"
-    assert row["period"] == "2026-J1"
+    assert row["periodFrom"] == "2026-01-15"
+    assert row["periodTo"] == "2026-01-15"
     assert row["panel"] == "basic"
     assert row["assessed"] == 1
     assert row["level"] in ("not_assessed", "low", "medium", "high", "very_high", "red_trigger")
@@ -122,8 +158,8 @@ def test_list_assessments_filters_by_infection():
 
 
 def test_list_assessments_filters_by_region():
-    _create_assessment("rabies", "KZ-J02", "2026-J1")
-    _create_assessment("rabies", "KZ-J03", "2026-J1")
+    _create_assessment("rabies", "KZ-J02", "2026-01-15")
+    _create_assessment("rabies", "KZ-J03", "2026-01-15")
 
     r_all = client.get("/v1/risk/assessments", params={"infectionCode": "rabies"})
     assert r_all.status_code == 200
@@ -136,18 +172,34 @@ def test_list_assessments_filters_by_region():
     assert data["content"][0]["regionCode"] == "KZ-J02"
 
 
-def test_list_assessments_filters_by_period():
-    _create_assessment("anthrax", "KZ-J04", "2026-P1")
-    _create_assessment("anthrax", "KZ-J04", "2026-P2")
+def test_list_assessments_filters_by_period_interval():
+    """T-06/БА: фильтр по интервалу, а не по точному совпадению строки периода."""
+    _create_assessment("anthrax", "KZ-J04", "2026-01-01", "2026-01-31")  # январь
+    _create_assessment("anthrax", "KZ-J04", "2026-06-01", "2026-06-30")  # июнь
 
     r_all = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J04"})
     assert r_all.json()["totalElements"] == 2
 
-    r = client.get("/v1/risk/assessments",
-                   params={"regionCode": "KZ-J04", "period": "2026-P1"})
+    # Окно, пересекающееся только с январской оценкой.
+    r = client.get("/v1/risk/assessments", params={
+        "regionCode": "KZ-J04", "periodFrom": "2026-01-10", "periodTo": "2026-01-20",
+    })
     data = r.json()
     assert data["totalElements"] == 1
-    assert data["content"][0]["period"] == "2026-P1"
+    assert data["content"][0]["periodFrom"] == "2026-01-01"
+
+    # Окно, не пересекающееся ни с одной оценкой.
+    r_none = client.get("/v1/risk/assessments", params={
+        "regionCode": "KZ-J04", "periodFrom": "2026-03-01", "periodTo": "2026-03-31",
+    })
+    assert r_none.json()["totalElements"] == 0
+
+    # Открытая с одной стороны граница — «всё, что заканчивается не раньше июня».
+    r_open = client.get("/v1/risk/assessments", params={
+        "regionCode": "KZ-J04", "periodFrom": "2026-05-01",
+    })
+    assert r_open.json()["totalElements"] == 1
+    assert r_open.json()["content"][0]["periodFrom"] == "2026-06-01"
 
 
 def test_list_assessments_search_matches_infection_name():
@@ -157,8 +209,8 @@ def test_list_assessments_search_matches_infection_name():
     приводит регистр кириллицы вне ASCII, регистронезависимость по не-ASCII проверяет
     отдельный тест на регионе (ASCII); здесь важна сама подстрочная фильтрация.
     """
-    _create_assessment("tularemia", "KZ-J06", "2026-J1")  # Туляремия
-    _create_assessment("measles", "KZ-J06", "2026-J1")    # Корь
+    _create_assessment("tularemia", "KZ-J06", "2026-01-15")  # Туляремия
+    _create_assessment("measles", "KZ-J06", "2026-01-15")    # Корь
 
     r = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J06", "search": "уляр"})
     data = r.json()
@@ -167,7 +219,7 @@ def test_list_assessments_search_matches_infection_name():
 
 
 def test_list_assessments_search_is_case_insensitive_and_matches_region():
-    _create_assessment("anthrax", "KZ-J07-SEARCH", "2026-J1")
+    _create_assessment("anthrax", "KZ-J07-SEARCH", "2026-01-15")
 
     r = client.get("/v1/risk/assessments", params={"search": "j07-search"})
     data = r.json()
@@ -175,16 +227,8 @@ def test_list_assessments_search_is_case_insensitive_and_matches_region():
     assert data["content"][0]["regionCode"] == "KZ-J07-SEARCH"
 
 
-def test_list_assessments_search_matches_period():
-    _create_assessment("measles", "KZ-J08", "2026-UNIQUEPERIOD")
-
-    r = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J08", "search": "UNIQUEPERIOD"})
-    data = r.json()
-    assert data["totalElements"] == 1
-
-
 def test_list_assessments_search_no_match_returns_empty():
-    _create_assessment("measles", "KZ-J09", "2026-J1")
+    _create_assessment("measles", "KZ-J09", "2026-01-15")
 
     r = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J09", "search": "нет-такого-текста"})
     assert r.json()["totalElements"] == 0
@@ -192,7 +236,7 @@ def test_list_assessments_search_no_match_returns_empty():
 
 def test_list_assessments_pagination():
     created_ids = [
-        _create_assessment("cholera", "KZ-J05", f"2026-P{i}")["assessmentId"] for i in range(5)
+        _create_assessment("cholera", "KZ-J05", f"2026-01-0{i + 1}")["assessmentId"] for i in range(5)
     ]
 
     r1 = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J05", "page": 0, "size": 2})
@@ -232,7 +276,8 @@ def test_saved_assessment_result_and_weight_snapshot_match_engine_and_db():
     body = {
         "infectionCode": "plague",
         "regionCode": "KZ-T07-DB",
-        "period": "2026-T07",
+        "periodFrom": "2026-07-01",
+        "periodTo": "2026-07-31",
         "panel": "basic",
         "scores": {"1": 3, "2": 2},
     }
@@ -267,7 +312,8 @@ def test_journal_returns_same_values_as_post_response():
     body = {
         "infectionCode": "cholera",
         "regionCode": "KZ-T07-JOURNAL",
-        "period": "2026-T07",
+        "periodFrom": "2026-07-01",
+        "periodTo": "2026-07-31",
         "panel": "basic",
         "scores": {"1": 4},
     }
@@ -300,6 +346,8 @@ def test_weight_edit_freezes_saved_assessment_but_applies_to_new_one():
         body = {
             "infectionCode": "plague",
             "regionCode": "KZ-T07-WEIGHTEDIT",
+            "periodFrom": "2026-08-01",
+            "periodTo": "2026-08-31",
             "panel": "basic",
             "scores": {"1": 4},
         }

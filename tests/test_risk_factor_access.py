@@ -102,6 +102,8 @@ def test_preview_reports_foreign_factor_as_rejected_not_as_error():
         response = client.post("/v1/risk/assessments/preview", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T27-PREVIEW",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"1": 4},  # фактор МИО, у КСЭК нет доступа
         })
 
@@ -126,6 +128,8 @@ def test_create_saves_accepted_part_and_reports_rejected_factor():
         response = client.post("/v1/risk/assessments", json={
             "infectionCode": "brucellosis",
             "regionCode": region,
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"20": 4, "1": 4},  # 20 — КСЭК (свой), 1 — МИО (чужой)
         })
 
@@ -155,6 +159,8 @@ def test_unknown_factor_number_is_ignored_not_flagged_as_rejected():
         response = client.post("/v1/risk/assessments/preview", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T27-UNKNOWN",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"20": 4, "999": 4},  # 999 не существует в каталоге бруцеллёза
         })
 
@@ -169,6 +175,8 @@ def test_expert_request_with_all_factors_has_no_rejections():
         response = client.post("/v1/risk/assessments/preview", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T27-EXPERT",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"1": 4, "20": 4},
         })
 
@@ -184,6 +192,8 @@ def test_existing_roles_keep_current_catalog_and_preview_scenarios():
         preview = client.post("/v1/risk/assessments/preview", json={
             "infectionCode": "brucellosis",
             "regionCode": "KZ-T15-COMPAT",
+            "periodFrom": "2026-01-01",
+            "periodTo": "2026-01-01",
             "scores": {"1": 2},
         })
     assert preview.status_code == 200, preview.text

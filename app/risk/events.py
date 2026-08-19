@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 log = logging.getLogger("gisbb-forecast.risk.events")
@@ -17,7 +18,8 @@ def log_red_trigger_event(
     assessment_id: int,
     infection_code: str,
     region_code: str,
-    period: str | None,
+    period_from: date,
+    period_to: date,
     red_triggers: list[dict[str, Any]],
 ) -> None:
     """Зафиксировать срабатывание красного триггера при сохранении оценки.
@@ -27,7 +29,8 @@ def log_red_trigger_event(
     порождал бы ложные срабатывания.
     """
     log.warning(
-        "RED_TRIGGER assessmentId=%s infectionCode=%s regionCode=%s period=%s factors=%s",
-        assessment_id, infection_code, region_code, period,
+        "RED_TRIGGER assessmentId=%s infectionCode=%s regionCode=%s periodFrom=%s periodTo=%s "
+        "factors=%s",
+        assessment_id, infection_code, region_code, period_from, period_to,
         [rt.get("no") for rt in red_triggers],
     )

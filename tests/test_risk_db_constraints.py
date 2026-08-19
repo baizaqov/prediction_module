@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 
@@ -76,6 +78,8 @@ def _create_assessment_for_score_test() -> int:
         assessment = Assessment(
             infection_code=_TEST_INFECTION,
             region_code="KZ-T08-CONSTRAINT",
+            period_from=date(2026, 1, 1),
+            period_to=date(2026, 1, 1),
             panel="basic",
             level="not_assessed",
             level_ru="не оценено",

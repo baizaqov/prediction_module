@@ -15,7 +15,8 @@ def _create_assessment(*, region_code: str, scores: dict[str, int]) -> dict:
     response = client.post("/v1/risk/assessments", json={
         "infectionCode": "plague",
         "regionCode": region_code,
-        "period": "2026-T22",
+        "periodFrom": "2026-10-01",
+        "periodTo": "2026-10-31",
         "panel": "basic",
         "scores": scores,
     })
@@ -52,7 +53,8 @@ def test_saved_assessment_detail_returns_persisted_result_and_score_snapshots():
     assert detail["infectionCode"] == assessment.infection_code == saved["infectionCode"]
     assert detail["infectionNameRu"]
     assert detail["regionCode"] == assessment.region_code == saved["regionCode"]
-    assert detail["period"] == assessment.period == saved["period"]
+    assert detail["periodFrom"] == str(assessment.period_from) == saved["periodFrom"]
+    assert detail["periodTo"] == str(assessment.period_to) == saved["periodTo"]
     assert detail["panel"] == assessment.panel == saved["panel"]
     assert detail["createdAt"]
     assert detail["panelSize"] == assessment.panel_size == saved["panelSize"]

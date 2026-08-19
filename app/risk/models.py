@@ -7,11 +7,11 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer,
-    MetaData, String, Text, event,
+    Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index,
+    Integer, MetaData, String, Text, event,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -142,11 +142,16 @@ class Assessment(RiskBase):
     """
 
     __tablename__ = "assessment"
+    __table_args__ = (
+        CheckConstraint("period_to >= period_from", name="ck_bb_risk_assessment_period_range"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     infection_code: Mapped[str] = mapped_column(String(32), index=True)
     region_code: Mapped[str] = mapped_column(String(16), index=True)  # КАТО региона/района
-    period: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Отчётный период — две обязательные даты (T-06, BR-021/022), заменяет свободную строку.
+    period_from: Mapped[date] = mapped_column(Date, index=True)
+    period_to: Mapped[date] = mapped_column(Date)
     panel: Mapped[str] = mapped_column(String(16), default="basic")   # basic|extended|full
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     created_by: Mapped[dict] = mapped_column(JSON, default=dict)

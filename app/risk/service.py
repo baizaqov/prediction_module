@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -140,7 +141,8 @@ def list_assessments(
     *,
     infection_code: str | None = None,
     region_code: str | None = None,
-    period: str | None = None,
+    period_from: date | None = None,
+    period_to: date | None = None,
     search: str | None = None,
     page: int = 0,
     size: int = 20,
@@ -151,23 +153,29 @@ def list_assessments(
     (T-07), а не пересчитываются по текущему каталогу — иначе правка веса фактора задним
     числом меняла бы уровень прошлых оценок.
 
-    ``search`` — подстрока по всем текстовым полям строки журнала (решение БА): нозология,
-    территория, период, уровень риска. Регистронезависимо.
+    ``period_from``/``period_to`` — фильтр по интервалу (решение БА), а не точное совпадение
+    строки: отдаётся всё, чей [period_from, period_to] пересекается с заданным окном. Любая
+    из границ может быть не задана — тогда окно открыто с этой стороны.
+
+    ``search`` — подстрока по текстовым полям строки журнала (решение БА): нозология,
+    территория, уровень риска. Регистронезависимо. Период — теперь пара дат, а не
+    свободный текст, поэтому в подстрочный поиск не входит.
     """
     query = session.query(Assessment)
     if infection_code:
         query = query.filter(Assessment.infection_code == infection_code)
     if region_code:
         query = query.filter(Assessment.region_code == region_code)
-    if period:
-        query = query.filter(Assessment.period == period)
+    if period_from is not None:
+        query = query.filter(Assessment.period_to >= period_from)
+    if period_to is not None:
+        query = query.filter(Assessment.period_from <= period_to)
     if search:
         pattern = f"%{search.strip()}%"
         matching_infection_codes = select(Infection.code).where(Infection.name_ru.ilike(pattern))
         query = query.filter(
             Assessment.infection_code.in_(matching_infection_codes)
             | Assessment.region_code.ilike(pattern)
-            | Assessment.period.ilike(pattern)
             | Assessment.level_ru.ilike(pattern)
         )
 
@@ -192,7 +200,8 @@ def list_assessments(
             "infectionCode": a.infection_code,
             "infectionNameRu": names[a.infection_code],
             "regionCode": a.region_code,
-            "period": a.period,
+            "periodFrom": a.period_from,
+            "periodTo": a.period_to,
             "panel": a.panel,
             "level": a.level,
             "levelRu": a.level_ru,
@@ -227,7 +236,8 @@ def get_assessment_detail(session: Session, assessment_id: int) -> dict | None:
         "infectionCode": assessment.infection_code,
         "infectionNameRu": infection.name_ru if infection else assessment.infection_code,
         "regionCode": assessment.region_code,
-        "period": assessment.period,
+        "periodFrom": assessment.period_from,
+        "periodTo": assessment.period_to,
         "panel": assessment.panel,
         "createdAt": assessment.created_at,
         "panelSize": assessment.panel_size,
@@ -269,7 +279,8 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         assessment = Assessment(
             infection_code=req.infectionCode,
             region_code=req.regionCode,
-            period=req.period,
+            period_from=req.periodFrom,
+            period_to=req.periodTo,
             panel=panel,
             created_by=asdict(principal.user_info) if principal else {},
             panel_size=result["panel_size"],
@@ -304,7 +315,8 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
                 assessment_id=assessment.id,
                 infection_code=req.infectionCode,
                 region_code=req.regionCode,
-                period=req.period,
+                period_from=req.periodFrom,
+                period_to=req.periodTo,
                 red_triggers=result["red_triggers"],
             )
 
@@ -312,7 +324,8 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         "assessmentId": assessment_id,
         "infectionCode": req.infectionCode,
         "regionCode": req.regionCode,
-        "period": req.period,
+        "periodFrom": req.periodFrom,
+        "periodTo": req.periodTo,
         "panel": result["panel"],
         "panelSize": result["panel_size"],
         "assessed": result["assessed"],
