@@ -51,6 +51,10 @@ class FactorWeightUpdate(BaseModel):
 class AssessmentRequest(BaseModel):
     infectionCode: str
     regionCode: str
+    # Район — необязателен (T-09, решение БА): конкретный район, либо явное «Обобщённо по
+    # региону» (isRegionWide), либо ни то ни другое (район не выбран вовсе).
+    districtCode: str | None = None
+    isRegionWide: bool = False
     # Отчётный период — две обязательные даты (T-06, BR-021/022), а не свободная строка.
     periodFrom: date
     periodTo: date
@@ -64,6 +68,12 @@ class AssessmentRequest(BaseModel):
             raise ValueError("periodTo не может быть раньше periodFrom")
         return self
 
+    @model_validator(mode="after")
+    def _check_district_xor_region_wide(self) -> "AssessmentRequest":
+        if self.districtCode is not None and self.isRegionWide:
+            raise ValueError("districtCode и isRegionWide взаимоисключающие — нельзя задать оба")
+        return self
+
 
 class RedTriggerOut(BaseModel):
     no: int
@@ -75,6 +85,8 @@ class AssessmentResultOut(BaseModel):
     assessmentId: int | None = None
     infectionCode: str
     regionCode: str
+    districtCode: str | None = None
+    isRegionWide: bool = False
     periodFrom: date
     periodTo: date
     panel: str
@@ -106,6 +118,8 @@ class AssessmentSummaryOut(BaseModel):
     infectionCode: str
     infectionNameRu: str
     regionCode: str
+    districtCode: str | None = None
+    isRegionWide: bool = False
     periodFrom: date
     periodTo: date
     panel: str
@@ -145,6 +159,8 @@ class AssessmentDetailOut(BaseModel):
     infectionCode: str
     infectionNameRu: str
     regionCode: str
+    districtCode: str | None = None
+    isRegionWide: bool = False
     periodFrom: date
     periodTo: date
     panel: str

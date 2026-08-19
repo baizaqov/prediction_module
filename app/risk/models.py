@@ -144,11 +144,23 @@ class Assessment(RiskBase):
     __tablename__ = "assessment"
     __table_args__ = (
         CheckConstraint("period_to >= period_from", name="ck_bb_risk_assessment_period_range"),
+        # «Обобщённо по региону» и конкретный район — взаимоисключающие значения (T-09,
+        # решение БА). Ограничение соответствует форме NOT (a AND b) в SQL-читаемом виде.
+        CheckConstraint(
+            "NOT (district_code IS NOT NULL AND is_region_wide = true)",
+            name="ck_bb_risk_assessment_district_xor_region_wide",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     infection_code: Mapped[str] = mapped_column(String(32), index=True)
-    region_code: Mapped[str] = mapped_column(String(16), index=True)  # КАТО региона/района
+    region_code: Mapped[str] = mapped_column(String(16), index=True)  # КАТО региона
+    # Район — отдельно от региона (T-09, решение БА, Приложение 2 п.3). Необязателен: либо
+    # конкретный район (district_code), либо явное «Обобщённо по региону» (is_region_wide),
+    # либо ни то ни другое — район просто не выбран. Контракт формата КАТО района — открытый
+    # технический вопрос (см. questions-for-techlead.md, п.4), здесь не решается.
+    district_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    is_region_wide: Mapped[bool] = mapped_column(Boolean, default=False)
     # Отчётный период — две обязательные даты (T-06, BR-021/022), заменяет свободную строку.
     period_from: Mapped[date] = mapped_column(Date, index=True)
     period_to: Mapped[date] = mapped_column(Date)

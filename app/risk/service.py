@@ -141,6 +141,7 @@ def list_assessments(
     *,
     infection_code: str | None = None,
     region_code: str | None = None,
+    district_code: str | None = None,
     period_from: date | None = None,
     period_to: date | None = None,
     search: str | None = None,
@@ -158,14 +159,16 @@ def list_assessments(
     из границ может быть не задана — тогда окно открыто с этой стороны.
 
     ``search`` — подстрока по текстовым полям строки журнала (решение БА): нозология,
-    территория, уровень риска. Регистронезависимо. Период — теперь пара дат, а не
-    свободный текст, поэтому в подстрочный поиск не входит.
+    территория (регион и район), уровень риска. Регистронезависимо. Период — теперь пара
+    дат, а не свободный текст, поэтому в подстрочный поиск не входит.
     """
     query = session.query(Assessment)
     if infection_code:
         query = query.filter(Assessment.infection_code == infection_code)
     if region_code:
         query = query.filter(Assessment.region_code == region_code)
+    if district_code:
+        query = query.filter(Assessment.district_code == district_code)
     if period_from is not None:
         query = query.filter(Assessment.period_to >= period_from)
     if period_to is not None:
@@ -176,6 +179,7 @@ def list_assessments(
         query = query.filter(
             Assessment.infection_code.in_(matching_infection_codes)
             | Assessment.region_code.ilike(pattern)
+            | Assessment.district_code.ilike(pattern)
             | Assessment.level_ru.ilike(pattern)
         )
 
@@ -200,6 +204,8 @@ def list_assessments(
             "infectionCode": a.infection_code,
             "infectionNameRu": names[a.infection_code],
             "regionCode": a.region_code,
+            "districtCode": a.district_code,
+            "isRegionWide": a.is_region_wide,
             "periodFrom": a.period_from,
             "periodTo": a.period_to,
             "panel": a.panel,
@@ -236,6 +242,8 @@ def get_assessment_detail(session: Session, assessment_id: int) -> dict | None:
         "infectionCode": assessment.infection_code,
         "infectionNameRu": infection.name_ru if infection else assessment.infection_code,
         "regionCode": assessment.region_code,
+        "districtCode": assessment.district_code,
+        "isRegionWide": assessment.is_region_wide,
         "periodFrom": assessment.period_from,
         "periodTo": assessment.period_to,
         "panel": assessment.panel,
@@ -279,6 +287,8 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         assessment = Assessment(
             infection_code=req.infectionCode,
             region_code=req.regionCode,
+            district_code=req.districtCode,
+            is_region_wide=req.isRegionWide,
             period_from=req.periodFrom,
             period_to=req.periodTo,
             panel=panel,
@@ -324,6 +334,8 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         "assessmentId": assessment_id,
         "infectionCode": req.infectionCode,
         "regionCode": req.regionCode,
+        "districtCode": req.districtCode,
+        "isRegionWide": req.isRegionWide,
         "periodFrom": req.periodFrom,
         "periodTo": req.periodTo,
         "panel": result["panel"],
