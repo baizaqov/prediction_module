@@ -10,7 +10,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, MetaData, String, Text, event,
+    Boolean, CheckConstraint, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer,
+    MetaData, String, Text, event,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -44,14 +45,23 @@ class Infection(RiskBase):
 
 
 class Factor(RiskBase):
-    """Фактор риска инфекции (каталог загружается из app/risk/data/<code>.json)."""
+    """Фактор риска инфекции (каталог загружается из app/risk/data/<code>.json).
+
+    Ограничения T-08 — на уровне БД, не только приложения: 707 факторов действующих 13
+    каталогов проверены перед вводом ограничения, ни один не нарушает ни одно из них.
+    """
 
     __tablename__ = "factor"
+    __table_args__ = (
+        CheckConstraint("weight BETWEEN 1 AND 4", name="ck_bb_risk_factor_weight_range"),
+        CheckConstraint("type IN ('numeric', 'binary')", name="ck_bb_risk_factor_type"),
+        CheckConstraint("tier IN ('basic', 'extended')", name="ck_bb_risk_factor_tier"),
+    )
 
     infection_code: Mapped[str] = mapped_column(String(32), primary_key=True)
     no: Mapped[int] = mapped_column(Integer, primary_key=True)
     category: Mapped[str] = mapped_column(String(255))
-    name: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(String(250))  # BR-037; максимум в действующих каталогах — 204
     type: Mapped[str] = mapped_column(String(16))          # numeric | binary
     weight: Mapped[int] = mapped_column(Integer)           # 1..4
     tier: Mapped[str] = mapped_column(String(16))          # basic | extended
@@ -160,6 +170,9 @@ class AssessmentScore(RiskBase):
     """
 
     __tablename__ = "assessment_score"
+    __table_args__ = (
+        CheckConstraint("score BETWEEN 0 AND 4", name="ck_bb_risk_assessment_score_range"),
+    )
 
     assessment_id: Mapped[int] = mapped_column(
         ForeignKey("assessment.id", ondelete="CASCADE"), primary_key=True)
