@@ -150,6 +150,46 @@ def test_list_assessments_filters_by_period():
     assert data["content"][0]["period"] == "2026-P1"
 
 
+def test_list_assessments_search_matches_infection_name():
+    """GAP-06: поиск по подстроке всех текстовых полей строки журнала (решение БА).
+
+    Подстрока без ведущей заглавной буквы: у SQLite (тестовая БД) ``lower()`` не
+    приводит регистр кириллицы вне ASCII, регистронезависимость по не-ASCII проверяет
+    отдельный тест на регионе (ASCII); здесь важна сама подстрочная фильтрация.
+    """
+    _create_assessment("tularemia", "KZ-J06", "2026-J1")  # Туляремия
+    _create_assessment("measles", "KZ-J06", "2026-J1")    # Корь
+
+    r = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J06", "search": "уляр"})
+    data = r.json()
+    assert data["totalElements"] == 1
+    assert data["content"][0]["infectionCode"] == "tularemia"
+
+
+def test_list_assessments_search_is_case_insensitive_and_matches_region():
+    _create_assessment("anthrax", "KZ-J07-SEARCH", "2026-J1")
+
+    r = client.get("/v1/risk/assessments", params={"search": "j07-search"})
+    data = r.json()
+    assert data["totalElements"] == 1
+    assert data["content"][0]["regionCode"] == "KZ-J07-SEARCH"
+
+
+def test_list_assessments_search_matches_period():
+    _create_assessment("measles", "KZ-J08", "2026-UNIQUEPERIOD")
+
+    r = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J08", "search": "UNIQUEPERIOD"})
+    data = r.json()
+    assert data["totalElements"] == 1
+
+
+def test_list_assessments_search_no_match_returns_empty():
+    _create_assessment("measles", "KZ-J09", "2026-J1")
+
+    r = client.get("/v1/risk/assessments", params={"regionCode": "KZ-J09", "search": "нет-такого-текста"})
+    assert r.json()["totalElements"] == 0
+
+
 def test_list_assessments_pagination():
     created_ids = [
         _create_assessment("cholera", "KZ-J05", f"2026-P{i}")["assessmentId"] for i in range(5)

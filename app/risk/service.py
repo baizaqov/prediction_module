@@ -141,6 +141,7 @@ def list_assessments(
     infection_code: str | None = None,
     region_code: str | None = None,
     period: str | None = None,
+    search: str | None = None,
     page: int = 0,
     size: int = 20,
 ) -> tuple[list[dict], int]:
@@ -149,6 +150,9 @@ def list_assessments(
     Уровень и признак красного триггера читаются из уже сохранённого результата расчёта
     (T-07), а не пересчитываются по текущему каталогу — иначе правка веса фактора задним
     числом меняла бы уровень прошлых оценок.
+
+    ``search`` — подстрока по всем текстовым полям строки журнала (решение БА): нозология,
+    территория, период, уровень риска. Регистронезависимо.
     """
     query = session.query(Assessment)
     if infection_code:
@@ -157,6 +161,15 @@ def list_assessments(
         query = query.filter(Assessment.region_code == region_code)
     if period:
         query = query.filter(Assessment.period == period)
+    if search:
+        pattern = f"%{search.strip()}%"
+        matching_infection_codes = select(Infection.code).where(Infection.name_ru.ilike(pattern))
+        query = query.filter(
+            Assessment.infection_code.in_(matching_infection_codes)
+            | Assessment.region_code.ilike(pattern)
+            | Assessment.period.ilike(pattern)
+            | Assessment.level_ru.ilike(pattern)
+        )
 
     total = query.count()
     rows = list(

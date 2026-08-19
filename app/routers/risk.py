@@ -147,6 +147,8 @@ def list_assessments(session: SessionDep, principal: PrincipalDep,
                      infectionCode: str | None = Query(None, description="Код инфекции"),
                      regionCode: str | None = Query(None, description="Код региона (КАТО)"),
                      period: str | None = Query(None, description="Отчётный период"),
+                     search: str | None = Query(
+                         None, description="Подстрока по нозологии, территории, периоду, уровню риска"),
                      page: int = Query(0, ge=0),
                      size: int = Query(20, ge=1, le=200),
                      _=Depends(require_roles(*READ_ROLES))):
@@ -155,6 +157,7 @@ def list_assessments(session: SessionDep, principal: PrincipalDep,
         infection_code=infectionCode,
         region_code=regionCode,
         period=period,
+        search=search,
         page=page,
         size=size,
     )
