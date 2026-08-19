@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..security import Principal
 from . import scoring
 from .access import accessible_factor_numbers, split_scores_by_access
+from .events import log_red_trigger_event
 from .models import Assessment, AssessmentScore, Factor, FactorWeightChange, Infection
 
 
@@ -284,6 +285,15 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
             ))
         session.commit()
         assessment_id = assessment.id
+
+        if result["has_red_trigger"]:
+            log_red_trigger_event(
+                assessment_id=assessment.id,
+                infection_code=req.infectionCode,
+                region_code=req.regionCode,
+                period=req.period,
+                red_triggers=result["red_triggers"],
+            )
 
     return {
         "assessmentId": assessment_id,
