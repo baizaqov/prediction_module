@@ -89,6 +89,9 @@ class AssessmentResultOut(BaseModel):
     isRegionWide: bool = False
     periodFrom: date
     periodTo: date
+    # Версия записи реестра (T-26): пересчёт создаёт новую, актуальна последняя (T-11).
+    # None у предпросмотра (persist=False) — версия назначается только при сохранении.
+    version: int | None = None
     panel: str
     panelSize: int
     assessed: int
@@ -122,6 +125,8 @@ class AssessmentSummaryOut(BaseModel):
     isRegionWide: bool = False
     periodFrom: date
     periodTo: date
+    # Версия записи реестра (T-26): пересчёт создаёт новую, актуальна последняя (T-11).
+    version: int
     panel: str
     level: str
     levelRu: str
@@ -163,6 +168,8 @@ class AssessmentDetailOut(BaseModel):
     isRegionWide: bool = False
     periodFrom: date
     periodTo: date
+    # Версия записи реестра (T-26): пересчёт создаёт новую, актуальна последняя (T-11).
+    version: int
     panel: str
     createdAt: datetime
     panelSize: int

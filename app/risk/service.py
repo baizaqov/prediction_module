@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..security import Principal
@@ -161,8 +161,17 @@ def list_assessments(
     ``search`` — подстрока по текстовым полям строки журнала (решение БА): нозология,
     территория (регион и район), уровень риска. Регистронезависимо. Период — теперь пара
     дат, а не свободный текст, поэтому в подстрочный поиск не входит.
+
+    Журнал показывает по одной строке на «запись реестра» (нозология+территория+период) —
+    только последнюю версию (T-11/T-26, решение БА). Более ранние версии из выдачи не
+    пропадают безвозвратно: они по-прежнему читаются напрямую через
+    ``GET /assessments/{id}``, просто не участвуют в списке.
     """
-    query = session.query(Assessment)
+    latest_ids_per_record = select(func.max(Assessment.id)).group_by(
+        Assessment.infection_code, Assessment.region_code, Assessment.district_code,
+        Assessment.is_region_wide, Assessment.period_from, Assessment.period_to,
+    )
+    query = session.query(Assessment).filter(Assessment.id.in_(latest_ids_per_record))
     if infection_code:
         query = query.filter(Assessment.infection_code == infection_code)
     if region_code:
@@ -208,6 +217,7 @@ def list_assessments(
             "isRegionWide": a.is_region_wide,
             "periodFrom": a.period_from,
             "periodTo": a.period_to,
+            "version": a.version,
             "panel": a.panel,
             "level": a.level,
             "levelRu": a.level_ru,
@@ -246,6 +256,7 @@ def get_assessment_detail(session: Session, assessment_id: int) -> dict | None:
         "isRegionWide": assessment.is_region_wide,
         "periodFrom": assessment.period_from,
         "periodTo": assessment.period_to,
+        "version": assessment.version,
         "panel": assessment.panel,
         "createdAt": assessment.created_at,
         "panelSize": assessment.panel_size,
@@ -284,6 +295,21 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
 
     assessment_id = None
     if persist:
+        # Версия записи реестра (T-26): пересчёт создаёт новую строку, а не обновляет
+        # прежнюю. max() среди совпадающих по естественному ключу + 1; ни одной строки — 1.
+        # ponytail: без блокировки строки/транзакции сериализации — при двух одновременных
+        # сохранениях одной и той же записи оба могут прочитать один max и посчитать
+        # одинаковый next-номер; апгрейд — SELECT FOR UPDATE или уникальный индекс с ретраем,
+        # когда это станет реальной нагрузкой, а не единичными ручными сохранениями.
+        previous_max_version = session.query(func.max(Assessment.version)).filter(
+            Assessment.infection_code == req.infectionCode,
+            Assessment.region_code == req.regionCode,
+            Assessment.district_code == req.districtCode,
+            Assessment.is_region_wide == req.isRegionWide,
+            Assessment.period_from == req.periodFrom,
+            Assessment.period_to == req.periodTo,
+        ).scalar()
+
         assessment = Assessment(
             infection_code=req.infectionCode,
             region_code=req.regionCode,
@@ -291,6 +317,7 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
             is_region_wide=req.isRegionWide,
             period_from=req.periodFrom,
             period_to=req.periodTo,
+            version=(previous_max_version or 0) + 1,
             panel=panel,
             created_by=asdict(principal.user_info) if principal else {},
             panel_size=result["panel_size"],
@@ -338,6 +365,7 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         "isRegionWide": req.isRegionWide,
         "periodFrom": req.periodFrom,
         "periodTo": req.periodTo,
+        "version": assessment.version if persist else None,
         "panel": result["panel"],
         "panelSize": result["panel_size"],
         "assessed": result["assessed"],

@@ -150,6 +150,7 @@ class Assessment(RiskBase):
             "NOT (district_code IS NOT NULL AND is_region_wide = true)",
             name="ck_bb_risk_assessment_district_xor_region_wide",
         ),
+        CheckConstraint("version >= 1", name="ck_bb_risk_assessment_version_positive"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -164,6 +165,13 @@ class Assessment(RiskBase):
     # Отчётный период — две обязательные даты (T-06, BR-021/022), заменяет свободную строку.
     period_from: Mapped[date] = mapped_column(Date, index=True)
     period_to: Mapped[date] = mapped_column(Date)
+    # Версионирование записи реестра (T-26, решение БА): пересчёт/исправление создаёт
+    # новую строку с version = max(предыдущих)+1 в пределах той же «записи реестра»
+    # (infection_code, region_code, district_code, is_region_wide, period_from, period_to).
+    # Предыдущие версии не удаляются и не помечаются — актуальна последняя (T-11, решение
+    # БА), см. service.list_assessments. Строки конкретной старой версии по-прежнему
+    # доступны через GET /assessments/{id}.
+    version: Mapped[int] = mapped_column(Integer, default=1)
     panel: Mapped[str] = mapped_column(String(16), default="basic")   # basic|extended|full
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     created_by: Mapped[dict] = mapped_column(JSON, default=dict)
