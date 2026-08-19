@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..security import Principal
 from . import scoring
-from .access import FactorAccessDenied, accessible_factor_numbers, ensure_scores_accessible
+from .access import accessible_factor_numbers, split_scores_by_access
 from .models import Assessment, AssessmentScore, Factor, FactorWeightChange, Infection
 
 
@@ -201,14 +201,18 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
     if infection is None:
         raise ValueError(f"Неизвестная инфекция: {req.infectionCode}")
 
-    # Проверка происходит до расчёта и тем более до создания Assessment: отказ по
-    # одному чужому фактору не оставляет в транзакции частично сохранённых строк.
-    ensure_scores_accessible(session, req.infectionCode, req.scores or {}, principal)
-
     # Полный каталог инфекции; панель выбирает scoring.calculate_risk по полю tier.
     catalog = _to_catalog_dicts(list_factors(session, req.infectionCode, panel="full"))
+    catalog_nos = {f["no"] for f in catalog}
+
+    # Баллы по чужим факторам исключаются из расчёта и сохранения, но не отклоняют
+    # оценку целиком — по решению БА сохраняется корректная часть (T-16/T-27).
+    accepted_scores, rejected_factors = split_scores_by_access(
+        session, req.infectionCode, req.scores or {}, catalog_nos, principal,
+    )
+
     panel = req.panel.value if hasattr(req.panel, "value") else str(req.panel)
-    result = scoring.calculate_risk(catalog, req.scores, panel=panel)
+    result = scoring.calculate_risk(catalog, accepted_scores, panel=panel)
 
     assessment_id = None
     if persist:
@@ -229,13 +233,12 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         )
         session.add(assessment)
         session.flush()
-        # Снимок веса берём из того же каталога, что уже пересчитал результат выше — не из
-        # req.scores напрямую: фактор, которого нет в каталоге инфекции, движок и так
-        # игнорирует, поэтому для него нет веса для снимка и строка не сохраняется.
+        # Снимок веса берём из того же каталога, что уже пересчитал результат выше. Источник
+        # баллов — accepted_scores, не req.scores: чужой фактор уже отфильтрован выше и не
+        # должен попасть в сохранённую оценку. Номера, которых нет в каталоге инфекции,
+        # по-прежнему отсеиваются здесь же — для них нет веса для снимка.
         weight_by_no = {f["no"]: f["weight"] for f in catalog}
-        for no, score in (req.scores or {}).items():
-            if score is None:
-                continue
+        for no, score in accepted_scores.items():
             factor_no = int(no)
             weight = weight_by_no.get(factor_no)
             if weight is None:
@@ -264,6 +267,7 @@ def assess(session: Session, req, principal: Principal, persist: bool = True) ->
         "levelRu": result["level_ru"],
         "hasRedTrigger": result["has_red_trigger"],
         "redTriggers": result["red_triggers"],
+        "rejectedFactors": rejected_factors,
         "byCategory": result["by_category"],
         "byFactorClass": result["by_factor_class"],
     }

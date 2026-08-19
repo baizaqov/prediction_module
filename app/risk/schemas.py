@@ -81,6 +81,8 @@ class AssessmentResultOut(BaseModel):
     levelRu: str
     hasRedTrigger: bool
     redTriggers: list[RedTriggerOut] = Field(default_factory=list)
+    # Номера факторов вне зоны ответственности роли, исключённые из расчёта (T-16/T-27).
+    rejectedFactors: list[int] = Field(default_factory=list)
     byCategory: dict[str, Any] = Field(default_factory=dict)
     byFactorClass: dict[str, Any] = Field(default_factory=dict)
 

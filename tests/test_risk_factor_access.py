@@ -96,24 +96,29 @@ def test_every_confirmed_role_is_accepted_by_write_guard(role: str):
     assert require_roles(*WRITE_ROLES)(principal, settings) is principal
 
 
-def test_preview_rejects_score_for_foreign_factor():
+def test_preview_reports_foreign_factor_as_rejected_not_as_error():
+    """T-16/T-27: чужой фактор не отклоняет оценку целиком — только исключается."""
     with _as_roles(KSEC_ROLES[0]):
         response = client.post("/v1/risk/assessments/preview", json={
             "infectionCode": "brucellosis",
-            "regionCode": "KZ-T15-PREVIEW",
-            "scores": {"1": 4},  # фактор МИО
+            "regionCode": "KZ-T27-PREVIEW",
+            "scores": {"1": 4},  # фактор МИО, у КСЭК нет доступа
         })
 
-    assert response.status_code == 403
-    assert response.json()["errors"][0]["errorType"] == "ACCESS_DENIED"
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["rejectedFactors"] == [1]
+    # Пустая корректная часть не должна выглядеть как валидная посчитанная оценка.
+    assert body["assessed"] == 0
+    assert body["level"] == "not_assessed"
 
 
-def test_create_rejects_foreign_factor_atomically():
-    region = "KZ-T15-ATOMIC"
+def test_create_saves_accepted_part_and_reports_rejected_factor():
+    """Смешанный запрос: свой фактор считается и сохраняется, чужой — исключается."""
+    region = "KZ-T27-MIXED"
     session = SessionLocal()
     try:
         assessments_before = session.query(Assessment).filter(Assessment.region_code == region).count()
-        scores_before = session.query(AssessmentScore).count()
     finally:
         session.close()
 
@@ -121,16 +126,54 @@ def test_create_rejects_foreign_factor_atomically():
         response = client.post("/v1/risk/assessments", json={
             "infectionCode": "brucellosis",
             "regionCode": region,
-            "scores": {"20": 4, "1": 4},  # 20 — КСЭК, 1 — МИО
+            "scores": {"20": 4, "1": 4},  # 20 — КСЭК (свой), 1 — МИО (чужой)
         })
 
-    assert response.status_code == 403
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["rejectedFactors"] == [1]
+    assert body["assessed"] == 1
+    assessment_id = body["assessmentId"]
+    assert assessment_id is not None
+
     session = SessionLocal()
     try:
-        assert session.query(Assessment).filter(Assessment.region_code == region).count() == assessments_before
-        assert session.query(AssessmentScore).count() == scores_before
+        assert session.query(Assessment).filter(Assessment.region_code == region).count() \
+            == assessments_before + 1
+        saved_factor_nos = {
+            row.factor_no for row in
+            session.query(AssessmentScore).filter(AssessmentScore.assessment_id == assessment_id)
+        }
+        assert saved_factor_nos == {20}
     finally:
         session.close()
+
+
+def test_unknown_factor_number_is_ignored_not_flagged_as_rejected():
+    """Номер, которого нет в каталоге вовсе, не маскируется под «чужой» (T-27)."""
+    with _as_roles(KSEC_ROLES[0]):
+        response = client.post("/v1/risk/assessments/preview", json={
+            "infectionCode": "brucellosis",
+            "regionCode": "KZ-T27-UNKNOWN",
+            "scores": {"20": 4, "999": 4},  # 999 не существует в каталоге бруцеллёза
+        })
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["rejectedFactors"] == []
+    assert body["assessed"] == 1
+
+
+def test_expert_request_with_all_factors_has_no_rejections():
+    with _as_roles(EXPERT):
+        response = client.post("/v1/risk/assessments/preview", json={
+            "infectionCode": "brucellosis",
+            "regionCode": "KZ-T27-EXPERT",
+            "scores": {"1": 4, "20": 4},
+        })
+
+    assert response.status_code == 200, response.text
+    assert response.json()["rejectedFactors"] == []
 
 
 def test_existing_roles_keep_current_catalog_and_preview_scenarios():

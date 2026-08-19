@@ -13,10 +13,6 @@ from ..security import Principal
 from .models import FactorOrganization
 
 
-class FactorAccessDenied(ValueError):
-    """Запрос содержит баллы по факторам вне зоны ответственности."""
-
-
 def has_full_factor_access(principal: Principal | None) -> bool:
     """Полный доступ Эксперта и обратная совместимость прежних ролей.
 
@@ -50,20 +46,27 @@ def accessible_factor_numbers(
     return set(session.execute(stmt).scalars())
 
 
-def ensure_scores_accessible(
-    session: Session, infection_code: str, scores: dict[int, int], principal: Principal | None,
-) -> None:
-    """Отклонить весь запрос до расчёта и сохранения, если есть чужой фактор."""
-    requested = {int(no) for no in scores}
-    if not requested:
-        return
+def split_scores_by_access(
+    session: Session,
+    infection_code: str,
+    scores: dict[int, int],
+    catalog_factor_numbers: set[int],
+    principal: Principal | None,
+) -> tuple[dict[int, int], list[int]]:
+    """Разделить баллы на допустимые для роли и отклонённые (T-16/T-27).
+
+    По решению БА чужой фактор в запросе не отклоняет оценку целиком — исключается
+    только он, остальное считается и сохраняется. Отклонёнными считаются лишь номера,
+    реально существующие в каталоге инфекции и закреплённые за другим органом: номер,
+    которого нет в каталоге вовсе, под доступ не подпадает и просто игнорируется
+    движком расчёта, как и раньше — не маскируется под «чужой».
+    """
+    requested = {int(no): value for no, value in scores.items() if value is not None}
 
     allowed = accessible_factor_numbers(session, infection_code, principal)
     if allowed is None:
-        return
+        return requested, []
 
-    denied = sorted(requested - allowed)
-    if denied:
-        raise FactorAccessDenied(
-            "Нет прав на ввод баллов по факторам: " + ", ".join(map(str, denied))
-        )
+    denied = sorted(no for no in requested if no in catalog_factor_numbers and no not in allowed)
+    accepted = {no: value for no, value in requested.items() if no not in denied}
+    return accepted, denied

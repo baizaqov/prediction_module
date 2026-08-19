@@ -159,8 +159,6 @@ def preview_assessment(body: AssessmentRequest, session: SessionDep, principal: 
                        _=Depends(require_roles(*READ_ROLES))):
     try:
         return service.assess(session, body, principal, persist=False)
-    except service.FactorAccessDenied as exc:
-        raise ForecastError(str(exc), status_code=403, error_type="ACCESS_DENIED") from exc
     except ValueError as exc:
         raise ForecastError(str(exc)) from exc
 
@@ -171,7 +169,5 @@ def create_assessment(body: AssessmentRequest, session: SessionDep, principal: P
                       _=Depends(require_roles(*WRITE_ROLES))):
     try:
         return service.assess(session, body, principal, persist=True)
-    except service.FactorAccessDenied as exc:
-        raise ForecastError(str(exc), status_code=403, error_type="ACCESS_DENIED") from exc
     except ValueError as exc:
         raise ForecastError(str(exc)) from exc
